@@ -135,6 +135,9 @@
     li.piu-di-uno .quantita .numero { color: var(--accento); font-weight: 700; }
     li.fatto .quantita { opacity: 0.5; }
     /* Scadenza: rossa se in ritardo, arancione se è per oggi o domani */
+    .gruppo-scadenza { flex: none; display: inline-flex; align-items: center; gap: 2px; }
+    .togli-scadenza { width: 22px; height: 22px; padding: 0; border: none; border-radius: 999px; background: none; color: var(--tenue); font-size: 0.7rem; }
+    .togli-scadenza:hover { color: var(--pericolo); background: var(--pericolo-sfondo); }
     .scadenza { position: relative; flex: none; display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px;
       background: var(--sfondo); color: var(--tenue); font-size: 0.75rem; font-weight: 600; cursor: pointer; }
     .scadenza input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }
@@ -350,7 +353,22 @@
         gestisciErrore(error);
       });
       etichetta.append(testoData, campo);
-      return etichetta;
+
+      // ✕ per togliere la data con un tocco, senza passare dal calendario
+      const togli = document.createElement('button');
+      togli.className = 'togli-scadenza';
+      togli.textContent = '✕';
+      togli.title = 'Togli la scadenza';
+      togli.addEventListener('click', async () => {
+        mostraScadenza(li, null);
+        const { error } = await db.from('voci').update({ scadenza: null }).eq('id', li.dataset.id);
+        gestisciErrore(error);
+      });
+
+      const gruppo = document.createElement('div');
+      gruppo.className = 'gruppo-scadenza';
+      gruppo.append(etichetta, togli);
+      return gruppo;
     }
 
     // Data di oggi come "2026-10-22", nel fuso orario di chi guarda
@@ -367,6 +385,7 @@
       li.dataset.scadenza = scadenza || '';
       li.classList.remove('in-ritardo', 'vicina', 'urgente');
       etichetta.classList.toggle('vuota', !scadenza);
+      li.querySelector('.togli-scadenza').hidden = !scadenza;
       if (!scadenza) {
         testoData.textContent = '📅';
         etichetta.title = 'Aggiungi una scadenza';
@@ -377,7 +396,7 @@
       const [anno, mese, giorno] = scadenza.split('-').map(Number);
       const data = new Date(anno, mese - 1, giorno);
       testoData.textContent = '📅 ' + (nomi[scadenza] || data.toLocaleDateString('it-IT', {
-        day: 'numeric', month: 'short', ...(anno !== new Date().getFullYear() && { year: 'numeric' }),
+        day: 'numeric', month: 'short', year: 'numeric',
       }));
       etichetta.title = 'Scadenza: ' + data.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
       // Le date si possono confrontare come testo perché sono nel formato anno-mese-giorno

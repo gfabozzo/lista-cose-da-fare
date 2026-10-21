@@ -4,6 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Cose da fare</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" href="icone/icona-192.png">
+  <link rel="apple-touch-icon" href="icone/apple-touch-icon.png">
+  <meta name="theme-color" content="#5b5bd6">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Cose da fare">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <style>
     /* Colori del tema chiaro */
     :root {
@@ -34,6 +42,7 @@
     }
 
     * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: var(--sfondo); color: var(--testo);
@@ -45,6 +54,8 @@
     }
     header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
     h1 { font-size: 1.7rem; margin: 0; letter-spacing: -0.02em; }
+    #azioni { display: flex; align-items: center; gap: 8px; }
+    #installa { padding: 8px 14px; border: none; border-radius: 999px; background: var(--accento); color: var(--accento-testo); font-size: 0.85rem; font-weight: 600; }
     #tema { border: 1px solid var(--bordo); background: none; border-radius: 999px; width: 40px; height: 40px; padding: 0; font-size: 1.1rem; }
 
     button { font: inherit; cursor: pointer; color: var(--testo); }
@@ -77,6 +88,8 @@
     #svuota { padding: 6px 10px; border: none; border-radius: 7px; background: none; color: var(--tenue); font-size: 0.9rem; }
     #svuota:hover { color: var(--pericolo); background: var(--pericolo-sfondo); }
 
+    #form-codice { margin-top: 10px; }
+    #codice { letter-spacing: 0.2em; }
     #accesso p { margin: 0 0 16px; color: var(--tenue); line-height: 1.5; }
     #messaggio { margin: 16px 0 0; padding: 10px 14px; border-radius: 10px; background: var(--sfondo); font-size: 0.9rem; line-height: 1.5; }
     #messaggio.errore { background: var(--pericolo-sfondo); color: var(--pericolo); }
@@ -105,7 +118,10 @@
   <main>
   <header>
     <h1>Cose da fare</h1>
-    <button id="tema" title="Cambia tema">🌙</button>
+    <div id="azioni">
+      <button id="installa" hidden>Installa app</button>
+      <button id="tema" title="Cambia tema">🌙</button>
+    </div>
   </header>
 
   <section id="accesso" hidden>
@@ -113,6 +129,10 @@
     <form id="form-accesso">
       <input id="email" type="email" placeholder="La tua email" autocomplete="email" required>
       <button>Inviami il link</button>
+    </form>
+    <form id="form-codice" hidden>
+      <input id="codice" inputmode="numeric" autocomplete="one-time-code" placeholder="Codice dalla mail" pattern="[0-9]{6,10}" required>
+      <button>Entra</button>
     </form>
   </section>
 
@@ -423,8 +443,22 @@
       if (error) {
         mostraMessaggio('Invio non riuscito: ' + error.message, true);
       } else {
-        mostraMessaggio(`Fatto! Controlla la posta di ${email} e clicca il link per entrare.`);
+        mostraMessaggio(`Fatto! Controlla la posta di ${email}: clicca il link oppure scrivi qui sotto il codice che trovi nella mail.`);
+        formCodice.hidden = false;
       }
+    });
+
+    // In alternativa al link: il codice nella mail. Serve soprattutto nell'app installata su iPhone,
+    // perché lì il link si aprirebbe in Safari invece che nell'app.
+    const formCodice = document.getElementById('form-codice');
+    formCodice.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const { error } = await db.auth.verifyOtp({
+        email: document.getElementById('email').value.trim(),
+        token: document.getElementById('codice').value.trim(),
+        type: 'email',
+      });
+      if (error) mostraMessaggio('Codice non valido o scaduto: ' + error.message, true);
     });
 
     document.getElementById('esci').addEventListener('click', () => db.auth.signOut());
@@ -476,6 +510,30 @@
       try { localStorage.setItem('tema', nuovo); } catch {}
       applicaTema(nuovo);
     });
+
+    // Installazione come app: Chrome su Android e computer propone l'installazione con questo evento
+    const installa = document.getElementById('installa');
+    let richiestaInstallazione = null;
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      richiestaInstallazione = e;
+      installa.hidden = false;
+    });
+
+    installa.addEventListener('click', async () => {
+      if (!richiestaInstallazione) return;
+      richiestaInstallazione.prompt();
+      await richiestaInstallazione.userChoice;
+      richiestaInstallazione = null;
+      installa.hidden = true;
+    });
+
+    window.addEventListener('appinstalled', () => { installa.hidden = true; });
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js').catch((errore) => console.error(errore));
+    }
 
     let temaSalvato = null;
     try { temaSalvato = localStorage.getItem('tema'); } catch {}

@@ -5,29 +5,90 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Cose da fare</title>
   <style>
-    body { font-family: -apple-system, sans-serif; max-width: 480px; margin: 40px auto; padding: 0 16px; background: #fafafa; color: #222; }
-    h1 { font-size: 1.6rem; }
+    /* Colori del tema chiaro */
+    :root {
+      --sfondo: #f2f3f7;
+      --scheda: #ffffff;
+      --testo: #1d1d1f;
+      --tenue: #8a8a92;
+      --bordo: #e4e5ea;
+      --accento: #5b5bd6;
+      --accento-testo: #ffffff;
+      --pericolo: #d64545;
+      --pericolo-sfondo: #fdecec;
+      --ombra: 0 8px 30px rgba(0, 0, 0, 0.08);
+    }
+    /* Colori del tema scuro: automatico se il Mac è in modalità scura... */
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-tema="chiaro"]) {
+        --sfondo: #141418; --scheda: #1e1e24; --testo: #ececf1; --tenue: #8b8b96;
+        --bordo: #2e2e37; --accento: #8b8bf5; --accento-testo: #141418;
+        --pericolo: #f07070; --pericolo-sfondo: #3a2024; --ombra: 0 8px 30px rgba(0, 0, 0, 0.4);
+      }
+    }
+    /* ...oppure scelto con il pulsante */
+    :root[data-tema="scuro"] {
+      --sfondo: #141418; --scheda: #1e1e24; --testo: #ececf1; --tenue: #8b8b96;
+      --bordo: #2e2e37; --accento: #8b8bf5; --accento-testo: #141418;
+      --pericolo: #f07070; --pericolo-sfondo: #3a2024; --ombra: 0 8px 30px rgba(0, 0, 0, 0.4);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--sfondo); color: var(--testo);
+      margin: 0; padding: 48px 16px; transition: background 0.2s, color 0.2s;
+    }
+    main {
+      max-width: 520px; margin: 0 auto; padding: 28px;
+      background: var(--scheda); border-radius: 18px; box-shadow: var(--ombra);
+    }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    h1 { font-size: 1.7rem; margin: 0; letter-spacing: -0.02em; }
+    #tema { border: 1px solid var(--bordo); background: none; border-radius: 999px; width: 40px; height: 40px; padding: 0; font-size: 1.1rem; }
+
+    button { font: inherit; cursor: pointer; color: var(--testo); }
+    input { font: inherit; color: var(--testo); background: var(--sfondo); border: 1px solid var(--bordo); border-radius: 10px; }
+    input:focus { outline: 2px solid var(--accento); outline-offset: -1px; }
+
     form { display: flex; gap: 8px; }
-    input { flex: 1; padding: 8px; font-size: 1rem; }
-    button { padding: 8px 14px; font-size: 1rem; cursor: pointer; }
-    ul { padding-left: 0; list-style: none; }
-    li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #eee; }
-    li span { flex: 1; cursor: text; }
-    li .modifica { flex: 1; padding: 4px; }
-    li.fatto span { text-decoration: line-through; color: #999; }
-    .elimina { padding: 2px 8px; border: none; background: none; color: #c33; font-size: 1.1rem; }
-    .elimina:hover { background: #fdeaea; border-radius: 4px; }
-    #filtri { display: flex; gap: 6px; margin-top: 16px; }
-    #filtri button { font-size: 0.9rem; padding: 4px 10px; }
-    #filtri button.attivo { font-weight: bold; }
+    form input { flex: 1; padding: 12px 14px; }
+    form button { padding: 0 18px; border: none; border-radius: 10px; background: var(--accento); color: var(--accento-testo); font-weight: 600; }
+    form button:hover { filter: brightness(1.08); }
+
+    #filtri { display: flex; gap: 4px; margin: 20px 0 8px; padding: 4px; background: var(--sfondo); border-radius: 10px; }
+    #filtri button { flex: 1; padding: 6px 10px; border: none; border-radius: 7px; background: none; font-size: 0.9rem; color: var(--tenue); }
+    #filtri button.attivo { background: var(--scheda); color: var(--testo); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); }
+
+    ul { padding: 0; margin: 0; list-style: none; }
+    li { display: flex; align-items: center; gap: 12px; padding: 12px 4px; border-bottom: 1px solid var(--bordo); }
+    li input[type="checkbox"] { width: 20px; height: 20px; margin: 0; accent-color: var(--accento); cursor: pointer; }
+    li span { flex: 1; cursor: text; word-break: break-word; }
+    li .modifica { flex: 1; padding: 6px 8px; }
+    li.fatto span { text-decoration: line-through; color: var(--tenue); }
+    .elimina { padding: 4px 8px; border: none; border-radius: 6px; background: none; color: var(--pericolo); opacity: 0.4; }
+    li:hover .elimina, .elimina:focus { opacity: 1; }
+    .elimina:hover { background: var(--pericolo-sfondo); }
     #lista[data-filtro="dafare"] li.fatto,
     #lista[data-filtro="fatte"] li:not(.fatto) { display: none; }
-    #fondo { display: flex; justify-content: space-between; align-items: center; color: #555; }
-    #svuota { font-size: 0.9rem; padding: 6px 10px; }
+
+    #fondo { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; color: var(--tenue); font-size: 0.9rem; }
+    #fondo p { margin: 0; }
+    #svuota { padding: 6px 10px; border: none; border-radius: 7px; background: none; color: var(--tenue); font-size: 0.9rem; }
+    #svuota:hover { color: var(--pericolo); background: var(--pericolo-sfondo); }
+
+    @media (max-width: 480px) {
+      body { padding: 16px; }
+      main { padding: 20px; }
+    }
   </style>
 </head>
 <body>
-  <h1>Cose da fare</h1>
+  <main>
+  <header>
+    <h1>Cose da fare</h1>
+    <button id="tema" title="Cambia tema">🌙</button>
+  </header>
   <form id="form">
     <input id="testo" placeholder="Scrivi una cosa da fare..." autofocus>
     <button>Aggiungi</button>
@@ -42,6 +103,7 @@
     <p id="conteggio">Nessuna cosa da fare</p>
     <button id="svuota" hidden>Svuota completate</button>
   </div>
+  </main>
 
   <script>
     const form = document.getElementById('form');
@@ -162,6 +224,28 @@
       aggiornaConteggio();
       salva();
     });
+
+    // Tema chiaro/scuro: parte da quello del Mac e ricorda la scelta fatta col pulsante
+    const tema = document.getElementById('tema');
+    const scuroDiSistema = window.matchMedia('(prefers-color-scheme: dark)');
+
+    function applicaTema(scelto) {
+      if (scelto) document.documentElement.dataset.tema = scelto;
+      const scuro = scelto ? scelto === 'scuro' : scuroDiSistema.matches;
+      tema.textContent = scuro ? '☀️' : '🌙';
+      tema.title = scuro ? 'Passa al tema chiaro' : 'Passa al tema scuro';
+    }
+
+    tema.addEventListener('click', () => {
+      const scuroOra = tema.textContent === '☀️';
+      const nuovo = scuroOra ? 'chiaro' : 'scuro';
+      try { localStorage.setItem('tema', nuovo); } catch {}
+      applicaTema(nuovo);
+    });
+
+    let temaSalvato = null;
+    try { temaSalvato = localStorage.getItem('tema'); } catch {}
+    applicaTema(temaSalvato);
 
     carica().forEach((voce) => aggiungiVoce(voce.testo, voce.fatto));
     aggiornaConteggio();

@@ -80,6 +80,16 @@
     #accesso p { margin: 0 0 16px; color: var(--tenue); line-height: 1.5; }
     #messaggio { margin: 16px 0 0; padding: 10px 14px; border-radius: 10px; background: var(--sfondo); font-size: 0.9rem; line-height: 1.5; }
     #messaggio.errore { background: var(--pericolo-sfondo); color: var(--pericolo); }
+    #liste { width: 100%; margin-bottom: 12px; padding: 10px 12px; font: inherit; font-weight: 600; color: var(--testo); background: var(--sfondo); border: 1px solid var(--bordo); border-radius: 10px; }
+    #condividi { margin-top: 20px; padding: 12px 14px; border: 1px solid var(--bordo); border-radius: 12px; }
+    #condividi summary { cursor: pointer; font-weight: 600; }
+    #condividi[open] summary { margin-bottom: 10px; }
+    #persone li { padding: 8px 0; font-size: 0.9rem; }
+    #persone li span { cursor: default; }
+    #persone .stato { color: var(--tenue); font-size: 0.8rem; }
+    #form-invito input { padding: 10px 12px; }
+    #form-invito button { padding: 0 14px; }
+    #condividi .nota { margin: 10px 0 0; color: var(--tenue); font-size: 0.8rem; line-height: 1.4; }
     #account { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--bordo); color: var(--tenue); font-size: 0.85rem; }
     #utente { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #esci { padding: 4px 10px; border: 1px solid var(--bordo); border-radius: 7px; background: none; color: var(--tenue); font-size: 0.85rem; }
@@ -109,6 +119,7 @@
   <p id="messaggio" hidden></p>
 
   <section id="app" hidden>
+  <select id="liste" title="Scegli la lista" hidden></select>
   <form id="form">
     <input id="testo" placeholder="Scrivi una cosa da fare..." autofocus>
     <button>Aggiungi</button>
@@ -123,6 +134,15 @@
     <p id="conteggio">Nessuna cosa da fare</p>
     <button id="svuota" hidden>Svuota completate</button>
   </div>
+  <details id="condividi">
+    <summary>👥 Condividi la lista</summary>
+    <ul id="persone"></ul>
+    <form id="form-invito">
+      <input id="email-invito" type="email" placeholder="Email della persona da invitare" required>
+      <button>Invita</button>
+    </form>
+    <p class="nota">Chi inviti entra nella lista la prima volta che accede al sito con quella email.</p>
+  </details>
   <div id="account">
     <span id="utente"></span>
     <button id="esci">Esci</button>
@@ -244,8 +264,95 @@
       campo.addEventListener('blur', () => chiudi(true));
     }
 
+    // La lista che stai guardando (puoi averne più di una se qualcuno ti invita)
+    let listaAttiva = null;
+    const sceltaLista = document.getElementById('liste');
+
+    async function preparaListe() {
+      // Accetta gli inviti per la tua email e crea la tua prima lista se non ne hai
+      const { data, error } = await db.rpc('prepara_liste');
+      if (error) {
+        console.error(error);
+        mostraMessaggio('Non riesco a caricare le tue liste: ' + error.message, true);
+        return false;
+      }
+      let preferita = null;
+      try { preferita = localStorage.getItem('lista-attiva'); } catch {}
+      listaAttiva = data.some((l) => l.id === preferita) ? preferita : data[0].id;
+
+      sceltaLista.replaceChildren(...data.map((l) => new Option(l.nome, l.id, false, l.id === listaAttiva)));
+      sceltaLista.hidden = data.length < 2;
+      return true;
+    }
+
+    sceltaLista.addEventListener('change', () => {
+      listaAttiva = sceltaLista.value;
+      try { localStorage.setItem('lista-attiva', listaAttiva); } catch {}
+      caricaVoci();
+      caricaPersone();
+    });
+
+    // Mostra chi fa parte della lista e chi è stato invitato
+    const persone = document.getElementById('persone');
+
+    async function caricaPersone() {
+      const [membri, inviti] = await Promise.all([
+        db.from('membri').select('user_id, email').eq('lista_id', listaAttiva),
+        db.from('inviti').select('email').eq('lista_id', listaAttiva),
+      ]);
+      if (membri.error || inviti.error) {
+        console.error(membri.error || inviti.error);
+        return;
+      }
+      persone.replaceChildren();
+      for (const m of membri.data) {
+        aggiungiPersona(m.email, m.user_id === utenteAttuale ? 'tu' : 'membro');
+      }
+      for (const i of inviti.data) {
+        aggiungiPersona(i.email, 'invito in attesa', async () => {
+          const { error } = await db.from('inviti').delete().eq('lista_id', listaAttiva).eq('email', i.email);
+          if (error) mostraMessaggio('Non sono riuscito ad annullare l\'invito: ' + error.message, true);
+          caricaPersone();
+        });
+      }
+    }
+
+    function aggiungiPersona(email, stato, annulla) {
+      const li = document.createElement('li');
+      const nome = document.createElement('span');
+      nome.textContent = email + ' ';
+      const etichetta = document.createElement('small');
+      etichetta.className = 'stato';
+      etichetta.textContent = '· ' + stato;
+      nome.append(etichetta);
+      li.append(nome);
+      if (annulla) {
+        const pulsante = document.createElement('button');
+        pulsante.className = 'elimina';
+        pulsante.textContent = '✕';
+        pulsante.title = 'Annulla invito';
+        pulsante.addEventListener('click', annulla);
+        li.append(pulsante);
+      }
+      persone.append(li);
+    }
+
+    document.getElementById('form-invito').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const campo = document.getElementById('email-invito');
+      const email = campo.value.trim().toLowerCase();
+      const { error } = await db.from('inviti').insert({ lista_id: listaAttiva, email });
+      if (error) {
+        mostraMessaggio(error.code === '23505' ? `${email} è già stata invitata.` : 'Invito non riuscito: ' + error.message, true);
+        return;
+      }
+      campo.value = '';
+      mostraMessaggio(`Invito registrato! Di' a ${email} di aprire il sito e accedere con questa email.`);
+      caricaPersone();
+    });
+
     async function caricaVoci() {
-      const { data, error } = await db.from('voci').select('id, testo, fatto').order('creata_il');
+      const { data, error } = await db.from('voci').select('id, testo, fatto').eq('lista_id', listaAttiva).order('creata_il');
       if (error) {
         console.error(error);
         mostraMessaggio('Non riesco a caricare la lista: ' + error.message, true);
@@ -261,7 +368,7 @@
       let vecchie = [];
       try { vecchie = JSON.parse(localStorage.getItem(CHIAVE)) || []; } catch {}
       if (!vecchie.length) return;
-      const { error } = await db.from('voci').insert(vecchie.map((v) => ({ testo: v.testo, fatto: !!v.fatto })));
+      const { error } = await db.from('voci').insert(vecchie.map((v) => ({ testo: v.testo, fatto: !!v.fatto, lista_id: listaAttiva })));
       if (error) {
         console.error(error);
         mostraMessaggio('Non sono riuscito a trasferire le voci salvate nel browser: ' + error.message, true);
@@ -296,7 +403,7 @@
       const nuovo = testo.value.trim();
       if (!nuovo) return;
       testo.value = '';
-      const { data, error } = await db.from('voci').insert({ testo: nuovo }).select('id, testo, fatto').single();
+      const { data, error } = await db.from('voci').insert({ testo: nuovo, lista_id: listaAttiva }).select('id, testo, fatto').single();
       if (gestisciErrore(error)) return;
       aggiungiVoce(data);
       aggiornaConteggio();
@@ -340,9 +447,16 @@
       mostraMessaggio('');
       // Le chiamate al database vanno fatte fuori da questa funzione, come chiede Supabase
       setTimeout(async () => {
+        if (!(await preparaListe())) return;
         await trasferisciVecchieVoci();
         await caricaVoci();
+        await caricaPersone();
       }, 0);
+    });
+
+    // Quando torni sulla pagina, ricarica la lista: così vedi le modifiche fatte dagli altri
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && utenteAttuale && listaAttiva) caricaVoci();
     });
 
     // Tema chiaro/scuro: parte da quello del Mac e ricorda la scelta fatta col pulsante

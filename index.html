@@ -209,7 +209,8 @@
       <input id="email-invito" type="email" placeholder="Email della persona da invitare" required>
       <button>Invita</button>
     </form>
-    <p class="nota">Chi inviti entra nella lista la prima volta che accede al sito con quella email.</p>
+    <p class="nota" id="nota-invito">Chi inviti entra nella lista la prima volta che accede al sito con quella email.</p>
+    <p class="nota" id="nota-solo-creatore" hidden>Solo chi ha creato la lista può invitare altre persone.</p>
     <button id="esci-lista" hidden>Esci da questa lista</button>
   </details>
   <div id="account">
@@ -608,17 +609,21 @@
         aggiungiPersona(m.email, (io ? 'tu · ' : '') + ruolo, togli, nomiPersone.get(m.user_id));
       }
       for (const i of inviti.data) {
-        aggiungiPersona(i.email, 'invito in attesa', {
+        // Solo chi ha creato la lista può annullare gli inviti
+        aggiungiPersona(i.email, 'invito in attesa', sonoCreatore ? {
           titolo: 'Annulla invito',
           azione: async () => {
             const { error } = await db.from('inviti').delete().eq('lista_id', listaAttiva).eq('email', i.email);
             if (error) mostraMessaggio('Non sono riuscito ad annullare l\'invito: ' + error.message, true);
             caricaPersone();
           },
-        });
+        } : null);
       }
-      // Chi non ha creato la lista può uscirne
+      // Chi non ha creato la lista può uscirne, ma non invitare
       esci.hidden = sonoCreatore;
+      document.getElementById('form-invito').hidden = !sonoCreatore;
+      document.getElementById('nota-invito').hidden = !sonoCreatore;
+      document.getElementById('nota-solo-creatore').hidden = sonoCreatore;
     }
 
     async function togliMembro(membro) {

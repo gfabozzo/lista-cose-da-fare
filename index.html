@@ -17,6 +17,11 @@
     li.fatto span { text-decoration: line-through; color: #999; }
     .elimina { padding: 2px 8px; border: none; background: none; color: #c33; font-size: 1.1rem; }
     .elimina:hover { background: #fdeaea; border-radius: 4px; }
+    #filtri { display: flex; gap: 6px; margin-top: 16px; }
+    #filtri button { font-size: 0.9rem; padding: 4px 10px; }
+    #filtri button.attivo { font-weight: bold; }
+    #lista[data-filtro="dafare"] li.fatto,
+    #lista[data-filtro="fatte"] li:not(.fatto) { display: none; }
     #fondo { display: flex; justify-content: space-between; align-items: center; color: #555; }
     #svuota { font-size: 0.9rem; padding: 6px 10px; }
   </style>
@@ -27,7 +32,12 @@
     <input id="testo" placeholder="Scrivi una cosa da fare..." autofocus>
     <button>Aggiungi</button>
   </form>
-  <ul id="lista"></ul>
+  <div id="filtri">
+    <button data-filtro="tutte" class="attivo">Tutte</button>
+    <button data-filtro="dafare">Da fare</button>
+    <button data-filtro="fatte">Completate</button>
+  </div>
+  <ul id="lista" data-filtro="tutte"></ul>
   <div id="fondo">
     <p id="conteggio">Nessuna cosa da fare</p>
     <button id="svuota" hidden>Svuota completate</button>
@@ -128,6 +138,15 @@
       });
       campo.addEventListener('blur', () => chiudi(true));
     }
+
+    // I filtri nascondono le voci con il CSS, senza toglierle dalla lista
+    const filtri = document.getElementById('filtri');
+    filtri.addEventListener('click', (e) => {
+      const pulsante = e.target.closest('button');
+      if (!pulsante) return;
+      filtri.querySelectorAll('button').forEach((b) => b.classList.toggle('attivo', b === pulsante));
+      lista.dataset.filtro = pulsante.dataset.filtro;
+    });
 
     svuota.addEventListener('click', () => {
       lista.querySelectorAll('li.fatto').forEach((li) => li.remove());

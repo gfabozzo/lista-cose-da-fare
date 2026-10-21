@@ -218,6 +218,10 @@
     // Chiave della vecchia lista salvata solo nel browser
     const CHIAVE = 'cose-da-fare';
 
+    // Qualsiasi errore imprevisto viene mostrato sulla pagina, invece di restare nascosto
+    window.addEventListener('error', (e) => mostraMessaggio('Errore imprevisto: ' + e.message, true));
+    window.addEventListener('unhandledrejection', (e) => mostraMessaggio('Errore imprevisto: ' + (e.reason?.message || e.reason), true));
+
     function mostraMessaggio(testoMessaggio, errore = false) {
       messaggio.textContent = testoMessaggio;
       messaggio.classList.toggle('errore', errore);

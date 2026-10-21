@@ -102,6 +102,14 @@
     #codice { letter-spacing: 0.2em; }
     #accesso p { margin: 0 0 16px; color: var(--tenue); line-height: 1.5; }
     #messaggio { margin: 16px 0 0; padding: 10px 14px; border-radius: 10px; background: var(--sfondo); font-size: 0.9rem; line-height: 1.5; }
+    #stato-rete { margin: 16px 0 0; padding: 10px 14px; border-radius: 10px; font-size: 0.9rem; line-height: 1.5;
+      background: hsl(30 90% var(--chi-sfondo)); color: hsl(30 80% var(--chi-testo)); }
+    /* Senza connessione si può solo guardare e spuntare: il resto è disattivato */
+    body.offline #form, body.offline #barra-liste button, body.offline .quantita button, body.offline .elimina,
+    body.offline .togli-scadenza, body.offline .scadenza, body.offline .maniglia, body.offline #svuota,
+    body.offline #condividi, body.offline #mio-nome {
+      opacity: 0.35; pointer-events: none; }
+    body.offline .corpo > span { pointer-events: none; }
     #messaggio.errore { background: var(--pericolo-sfondo); color: var(--pericolo); }
     #barra-liste { display: flex; gap: 6px; margin-bottom: 12px; }
     #barra-liste button { width: 42px; flex: none; border: 1px solid var(--bordo); border-radius: 10px; background: var(--sfondo); font-size: 1rem; }
@@ -198,6 +206,7 @@
   </section>
 
   <p id="messaggio" hidden></p>
+  <p id="stato-rete" hidden></p>
 
   <section id="app" hidden>
   <div id="barra-liste">
@@ -285,10 +294,83 @@
     function gestisciErrore(error) {
       if (!error) return false;
       console.error(error);
+      if (eErroreDiRete(error)) {
+        mostraMessaggio('Sei senza connessione: questa modifica non è stata salvata.', true);
+        return true;
+      }
       mostraMessaggio('Non sono riuscito a salvare la modifica: ' + error.message, true);
       caricaVoci();
       return true;
     }
+
+    // ---- Senza connessione ----
+    // La pagina tiene una copia delle liste nel browser: senza rete mostra quella,
+    // e le spunte fatte nel frattempo vengono inviate appena torna la connessione.
+
+    function eErroreDiRete(error) {
+      return !navigator.onLine || /offline|fetch|network|load failed|internet/i.test(error?.message || '');
+    }
+
+    function leggiCopia(chiave, predefinito) {
+      try { return JSON.parse(localStorage.getItem('copia-' + chiave)) ?? predefinito; } catch { return predefinito; }
+    }
+
+    function scriviCopia(chiave, valore) {
+      try { localStorage.setItem('copia-' + chiave, JSON.stringify(valore)); } catch {}
+    }
+
+    // Salva le voci della lista attiva così come si vedono
+    function salvaCopiaVoci() {
+      if (!listaAttiva) return;
+      scriviCopia('voci-' + listaAttiva, [...lista.children].map((li) => ({
+        id: li.dataset.id,
+        testo: li.querySelector('span')?.textContent ?? li.querySelector('.modifica')?.value ?? '',
+        fatto: li.classList.contains('fatto'),
+        user_id: li.querySelector('.chi')?.dataset.utente,
+        posizione: Number(li.dataset.posizione),
+        quantita: Number(li.dataset.quantita) || 1,
+        scadenza: li.dataset.scadenza || null,
+      })));
+    }
+
+    // Spunte fatte senza connessione: { id della voce: fatta sì/no }
+    function mettiInAttesa(id, fatto) {
+      scriviCopia('in-attesa', { ...leggiCopia('in-attesa', {}), [id]: fatto });
+      aggiornaStatoRete();
+    }
+
+    async function inviaInAttesa() {
+      const inAttesa = leggiCopia('in-attesa', {});
+      for (const [id, fatto] of Object.entries(inAttesa)) {
+        const { error } = await db.from('voci').update({ fatto }).eq('id', id);
+        if (error && eErroreDiRete(error)) return; // la rete è di nuovo caduta: si riprova dopo
+        delete inAttesa[id];
+        scriviCopia('in-attesa', inAttesa);
+      }
+      aggiornaStatoRete();
+    }
+
+    function aggiornaStatoRete() {
+      const offline = !navigator.onLine;
+      const inAttesa = Object.keys(leggiCopia('in-attesa', {})).length;
+      document.body.classList.toggle('offline', offline);
+      const stato = document.getElementById('stato-rete');
+      stato.hidden = !offline && !inAttesa;
+      stato.textContent = offline
+        ? '📴 Sei senza connessione: vedi l\'ultima copia salvata. Puoi spuntare le voci, le salvo appena torna la rete.'
+          + (inAttesa ? ` (${inAttesa} da salvare)` : '')
+        : `⏳ Sto salvando ${inAttesa} ${inAttesa === 1 ? 'modifica fatta' : 'modifiche fatte'} senza connessione…`;
+    }
+
+    window.addEventListener('offline', aggiornaStatoRete);
+    window.addEventListener('online', async () => {
+      aggiornaStatoRete();
+      if (!utenteAttuale) return;
+      // Fa rinnovare l'accesso a Supabase, se nel frattempo era scaduto
+      await db.auth.getSession();
+      await inviaInAttesa();
+      await aggiornaTutto();
+    });
 
     function aggiornaConteggio() {
       const restanti = lista.querySelectorAll('li:not(.fatto)').length;
@@ -297,6 +379,7 @@
         : `Ti restano ${restanti} cose da fare`;
       // Il pulsante compare solo se c'è almeno una voce completata
       svuota.hidden = !lista.querySelector('li.fatto');
+      salvaCopiaVoci();
     }
 
     function aggiungiVoce(voce) {
@@ -319,7 +402,10 @@
         li.classList.toggle('fatto', casella.checked);
         mostraScadenza(li, li.dataset.scadenza);
         aggiornaConteggio();
-        const { error } = await db.from('voci').update({ fatto: casella.checked }).eq('id', li.dataset.id);
+        const fatto = casella.checked;
+        if (!navigator.onLine) return mettiInAttesa(li.dataset.id, fatto);
+        const { error } = await db.from('voci').update({ fatto }).eq('id', li.dataset.id);
+        if (error && eErroreDiRete(error)) return mettiInAttesa(li.dataset.id, fatto);
         gestisciErrore(error);
       });
 
@@ -501,7 +587,13 @@
 
     async function preparaListe() {
       // Accetta gli inviti per la tua email e crea la tua prima lista se non ne hai
-      const { data, error } = await db.rpc('prepara_liste');
+      let { data, error } = navigator.onLine ? await db.rpc('prepara_liste') : { data: null, error: { message: 'offline' } };
+      if (error && eErroreDiRete(error) && leggiCopia('liste', []).length) {
+        data = leggiCopia('liste', []);
+        error = null;
+      } else if (!error) {
+        scriviCopia('liste', data);
+      }
       if (error) {
         console.error(error);
         mostraMessaggio('Non riesco a caricare le tue liste: ' + error.message, true);
@@ -600,12 +692,19 @@
     }
 
     async function caricaPersone() {
-      const [membri, inviti] = await Promise.all([
+      const senzaRete = { data: null, error: { message: 'offline' } };
+      const [membri, inviti] = !navigator.onLine ? [senzaRete, senzaRete] : await Promise.all([
         db.from('membri').select('user_id, email').eq('lista_id', listaAttiva),
         db.from('inviti').select('email').eq('lista_id', listaAttiva),
       ]);
       if (membri.error || inviti.error) {
         console.error(membri.error || inviti.error);
+        const copia = leggiCopia('persone-' + listaAttiva, null);
+        if (copia) {
+          nomiPersone = new Map(copia.nomi);
+          listaCondivisa = copia.condivisa;
+          aggiornaEtichette();
+        }
         return;
       }
       const profili = await db.from('profili').select('user_id, nome')
@@ -622,6 +721,7 @@
         nomiPersone.set(m.user_id, { nome: nomiScelti.get(m.user_id) || m.email.split('@')[0], tinta: TINTE[i] });
       }
       listaCondivisa = membri.data.length > 1;
+      scriviCopia('persone-' + listaAttiva, { nomi: [...nomiPersone], condivisa: listaCondivisa });
       aggiornaEtichette();
 
       const creatore = creatoreListaAttiva();
@@ -754,7 +854,15 @@
     });
 
     async function caricaVoci() {
-      const { data, error } = await db.from('voci').select('id, testo, fatto, user_id, posizione, quantita, scadenza').eq('lista_id', listaAttiva).order('posizione');
+      let { data, error } = navigator.onLine
+        ? await db.from('voci').select('id, testo, fatto, user_id, posizione, quantita, scadenza').eq('lista_id', listaAttiva).order('posizione')
+        : { data: null, error: { message: 'offline' } };
+      const senzaRete = error && eErroreDiRete(error);
+      if (senzaRete && leggiCopia('voci-' + listaAttiva, null)) {
+        const inAttesa = leggiCopia('in-attesa', {});
+        data = leggiCopia('voci-' + listaAttiva, []).map((v) => (v.id in inAttesa ? { ...v, fatto: inAttesa[v.id] } : v));
+        error = null;
+      }
       if (error) {
         console.error(error);
         mostraMessaggio('Non riesco a caricare la lista: ' + error.message, true);
@@ -763,7 +871,7 @@
       lista.replaceChildren();
       data.forEach(aggiungiVoce);
       aggiornaConteggio();
-      ascoltaModifiche();
+      if (!senzaRete) ascoltaModifiche();
     }
 
     // Tempo reale: il database avvisa quando qualcuno aggiunge, modifica o elimina una voce
@@ -977,7 +1085,10 @@
     // Mostra il login o la lista a seconda che tu abbia fatto l'accesso
     let utenteAttuale = null;
     db.auth.onAuthStateChange((evento, sessione) => {
-      const utente = sessione?.user ?? null;
+      if (evento === 'SIGNED_OUT') try { localStorage.removeItem('copia-utente'); } catch {}
+      if (sessione?.user) scriviCopia('utente', { id: sessione.user.id, email: sessione.user.email });
+      // Senza connessione Supabase non può rinnovare l'accesso: si usa l'ultimo utente, solo per vedere la copia salvata
+      const utente = sessione?.user ?? (!navigator.onLine && evento !== 'SIGNED_OUT' ? leggiCopia('utente', null) : null);
       if (utente?.id === utenteAttuale) return;
       utenteAttuale = utente?.id ?? null;
 
@@ -996,6 +1107,8 @@
         const controllo = setTimeout(caricamentoBloccato, 8000);
         try {
           if (!(await preparaListe())) return;
+          // Prima invia le spunte fatte l'ultima volta senza connessione
+          if (navigator.onLine) await inviaInAttesa();
           await trasferisciVecchieVoci();
           await caricaVoci();
           await caricaPersone();
@@ -1008,6 +1121,7 @@
     // A volte, dopo tanto tempo che la pagina non veniva aperta, il caricamento resta in attesa
     // per sempre. In quel caso ricarica la pagina una volta; se non basta, lo dice invece di restare vuota.
     function caricamentoBloccato() {
+      if (!navigator.onLine) return;
       let giaRicaricata = false;
       try { giaRicaricata = sessionStorage.getItem('ricaricata') === 'si'; } catch {}
       if (!giaRicaricata) {
@@ -1080,6 +1194,7 @@
     let temaSalvato = null;
     try { temaSalvato = localStorage.getItem('tema'); } catch {}
     applicaTema(temaSalvato);
+    aggiornaStatoRete();
   </script>
 </body>
 </html>

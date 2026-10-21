@@ -52,7 +52,7 @@
     input:focus { outline: 2px solid var(--accento); outline-offset: -1px; }
 
     form { display: flex; gap: 8px; }
-    form input { flex: 1; padding: 12px 14px; }
+    form input { flex: 1; min-width: 0; padding: 12px 14px; }
     form button { padding: 0 18px; border: none; border-radius: 10px; background: var(--accento); color: var(--accento-testo); font-weight: 600; }
     form button:hover { filter: brightness(1.08); }
 
@@ -77,6 +77,14 @@
     #svuota { padding: 6px 10px; border: none; border-radius: 7px; background: none; color: var(--tenue); font-size: 0.9rem; }
     #svuota:hover { color: var(--pericolo); background: var(--pericolo-sfondo); }
 
+    #accesso p { margin: 0 0 16px; color: var(--tenue); line-height: 1.5; }
+    #messaggio { margin: 16px 0 0; padding: 10px 14px; border-radius: 10px; background: var(--sfondo); font-size: 0.9rem; line-height: 1.5; }
+    #messaggio.errore { background: var(--pericolo-sfondo); color: var(--pericolo); }
+    #account { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--bordo); color: var(--tenue); font-size: 0.85rem; }
+    #utente { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #esci { padding: 4px 10px; border: 1px solid var(--bordo); border-radius: 7px; background: none; color: var(--tenue); font-size: 0.85rem; }
+    #esci:hover { color: var(--testo); }
+
     @media (max-width: 480px) {
       body { padding: 16px; }
       main { padding: 20px; }
@@ -89,6 +97,18 @@
     <h1>Cose da fare</h1>
     <button id="tema" title="Cambia tema">🌙</button>
   </header>
+
+  <section id="accesso" hidden>
+    <p>Accedi per ritrovare la tua lista su tutti i tuoi dispositivi. Ti mandiamo un link via email: niente password.</p>
+    <form id="form-accesso">
+      <input id="email" type="email" placeholder="La tua email" autocomplete="email" required>
+      <button>Inviami il link</button>
+    </form>
+  </section>
+
+  <p id="messaggio" hidden></p>
+
+  <section id="app" hidden>
   <form id="form">
     <input id="testo" placeholder="Scrivi una cosa da fare..." autofocus>
     <button>Aggiungi</button>
@@ -103,16 +123,47 @@
     <p id="conteggio">Nessuna cosa da fare</p>
     <button id="svuota" hidden>Svuota completate</button>
   </div>
+  <div id="account">
+    <span id="utente"></span>
+    <button id="esci">Esci</button>
+  </div>
+  </section>
   </main>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
   <script>
+    // Collegamento a Supabase: questi due valori sono pensati per stare in una pagina pubblica.
+    // La protezione dei dati è data dalle regole nel database (vedi supabase/schema.sql).
+    const SUPABASE_URL = 'https://nfhcggivsdorubguqfgy.supabase.co';
+    const SUPABASE_CHIAVE = 'sb_publishable_D9I38RUtZvfA7FI6B1kefA_dgnK2ONY';
+    const db = supabase.createClient(SUPABASE_URL, SUPABASE_CHIAVE);
+
     const form = document.getElementById('form');
     const testo = document.getElementById('testo');
     const lista = document.getElementById('lista');
     const conteggio = document.getElementById('conteggio');
     const svuota = document.getElementById('svuota');
+    const accesso = document.getElementById('accesso');
+    const app = document.getElementById('app');
+    const messaggio = document.getElementById('messaggio');
 
+    // Chiave della vecchia lista salvata solo nel browser
     const CHIAVE = 'cose-da-fare';
+
+    function mostraMessaggio(testoMessaggio, errore = false) {
+      messaggio.textContent = testoMessaggio;
+      messaggio.classList.toggle('errore', errore);
+      messaggio.hidden = !testoMessaggio;
+    }
+
+    // Se il database risponde con un errore, lo mostra e ricarica la lista vera
+    function gestisciErrore(error) {
+      if (!error) return false;
+      console.error(error);
+      mostraMessaggio('Non sono riuscito a salvare la modifica: ' + error.message, true);
+      caricaVoci();
+      return true;
+    }
 
     function aggiornaConteggio() {
       const restanti = lista.querySelectorAll('li:not(.fatto)').length;
@@ -123,35 +174,24 @@
       svuota.hidden = !lista.querySelector('li.fatto');
     }
 
-    // Salva la lista nel browser, così resta anche dopo aver ricaricato la pagina
-    function salva() {
-      const voci = [...lista.children].map((li) => ({
-        testo: li.querySelector('span').textContent,
-        fatto: li.classList.contains('fatto'),
-      }));
-      try { localStorage.setItem(CHIAVE, JSON.stringify(voci)); } catch {}
-    }
-
-    function carica() {
-      try { return JSON.parse(localStorage.getItem(CHIAVE)) || []; } catch { return []; }
-    }
-
-    function aggiungiVoce(testoVoce, fatto) {
+    function aggiungiVoce(voce) {
       const li = document.createElement('li');
-      if (fatto) li.classList.add('fatto');
+      li.dataset.id = voce.id;
+      if (voce.fatto) li.classList.add('fatto');
 
       const casella = document.createElement('input');
       casella.type = 'checkbox';
-      casella.checked = fatto;
+      casella.checked = voce.fatto;
       casella.title = 'Segna come fatta';
-      casella.addEventListener('change', () => {
+      casella.addEventListener('change', async () => {
         li.classList.toggle('fatto', casella.checked);
         aggiornaConteggio();
-        salva();
+        const { error } = await db.from('voci').update({ fatto: casella.checked }).eq('id', li.dataset.id);
+        gestisciErrore(error);
       });
 
       const span = document.createElement('span');
-      span.textContent = testoVoce;
+      span.textContent = voce.testo;
       span.title = 'Doppio clic per modificare';
       span.addEventListener('dblclick', () => modificaVoce(li, span));
 
@@ -159,14 +199,17 @@
       elimina.className = 'elimina';
       elimina.textContent = '✕';
       elimina.title = 'Elimina';
-      elimina.addEventListener('click', () => {
-        li.remove();
-        aggiornaConteggio();
-        salva();
-      });
+      elimina.addEventListener('click', () => eliminaVoce(li));
 
       li.append(casella, span, elimina);
       lista.appendChild(li);
+    }
+
+    async function eliminaVoce(li) {
+      li.remove();
+      aggiornaConteggio();
+      const { error } = await db.from('voci').delete().eq('id', li.dataset.id);
+      gestisciErrore(error);
     }
 
     // Sostituisce il testo con un campo modificabile: Invio salva, Esc annulla
@@ -179,19 +222,19 @@
       campo.select();
 
       let finito = false;
-      function chiudi(conferma) {
+      async function chiudi(conferma) {
         if (finito) return;
         finito = true;
         const nuovo = campo.value.trim();
-        if (conferma && !nuovo) {
+        campo.replaceWith(span);
+        if (!conferma || nuovo === span.textContent) return;
+        if (!nuovo) {
           // Se il testo è stato cancellato, elimina la voce
-          li.remove();
-        } else {
-          if (conferma) span.textContent = nuovo;
-          campo.replaceWith(span);
+          return eliminaVoce(li);
         }
-        aggiornaConteggio();
-        salva();
+        span.textContent = nuovo;
+        const { error } = await db.from('voci').update({ testo: nuovo }).eq('id', li.dataset.id);
+        gestisciErrore(error);
       }
 
       campo.addEventListener('keydown', (e) => {
@@ -199,6 +242,36 @@
         if (e.key === 'Escape') chiudi(false);
       });
       campo.addEventListener('blur', () => chiudi(true));
+    }
+
+    async function caricaVoci() {
+      const { data, error } = await db.from('voci').select('id, testo, fatto').order('creata_il');
+      if (error) {
+        console.error(error);
+        mostraMessaggio('Non riesco a caricare la lista: ' + error.message, true);
+        return;
+      }
+      lista.replaceChildren();
+      data.forEach(aggiungiVoce);
+      aggiornaConteggio();
+    }
+
+    // La prima volta che accedi, sposta nel database le voci salvate prima solo nel browser
+    async function trasferisciVecchieVoci() {
+      let vecchie = [];
+      try { vecchie = JSON.parse(localStorage.getItem(CHIAVE)) || []; } catch {}
+      if (!vecchie.length) return;
+      const { error } = await db.from('voci').insert(vecchie.map((v) => ({ testo: v.testo, fatto: !!v.fatto })));
+      if (error) {
+        console.error(error);
+        mostraMessaggio('Non sono riuscito a trasferire le voci salvate nel browser: ' + error.message, true);
+        return;
+      }
+      try {
+        localStorage.setItem(CHIAVE + '-copia', JSON.stringify(vecchie));
+        localStorage.removeItem(CHIAVE);
+      } catch {}
+      mostraMessaggio(`Ho spostato ${vecchie.length} voci dal browser al tuo account.`);
     }
 
     // I filtri nascondono le voci con il CSS, senza toglierle dalla lista
@@ -210,19 +283,66 @@
       lista.dataset.filtro = pulsante.dataset.filtro;
     });
 
-    svuota.addEventListener('click', () => {
-      lista.querySelectorAll('li.fatto').forEach((li) => li.remove());
+    svuota.addEventListener('click', async () => {
+      const completate = [...lista.querySelectorAll('li.fatto')];
+      completate.forEach((li) => li.remove());
       aggiornaConteggio();
-      salva();
+      const { error } = await db.from('voci').delete().in('id', completate.map((li) => li.dataset.id));
+      gestisciErrore(error);
     });
 
-    form.addEventListener('submit', (e) => {
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      if (!testo.value.trim()) return;
-      aggiungiVoce(testo.value, false);
+      const nuovo = testo.value.trim();
+      if (!nuovo) return;
       testo.value = '';
+      const { data, error } = await db.from('voci').insert({ testo: nuovo }).select('id, testo, fatto').single();
+      if (gestisciErrore(error)) return;
+      aggiungiVoce(data);
       aggiornaConteggio();
-      salva();
+    });
+
+    // Accesso con link via email
+    document.getElementById('form-accesso').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const pulsante = e.target.querySelector('button');
+      const email = document.getElementById('email').value.trim();
+      pulsante.disabled = true;
+      const { error } = await db.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: location.origin + location.pathname },
+      });
+      pulsante.disabled = false;
+      if (error) {
+        mostraMessaggio('Invio non riuscito: ' + error.message, true);
+      } else {
+        mostraMessaggio(`Fatto! Controlla la posta di ${email} e clicca il link per entrare.`);
+      }
+    });
+
+    document.getElementById('esci').addEventListener('click', () => db.auth.signOut());
+
+    // Mostra il login o la lista a seconda che tu abbia fatto l'accesso
+    let utenteAttuale = null;
+    db.auth.onAuthStateChange((evento, sessione) => {
+      const utente = sessione?.user ?? null;
+      if (utente?.id === utenteAttuale) return;
+      utenteAttuale = utente?.id ?? null;
+
+      accesso.hidden = !!utente;
+      app.hidden = !utente;
+      lista.replaceChildren();
+      if (!utente) {
+        mostraMessaggio('');
+        return;
+      }
+      document.getElementById('utente').textContent = utente.email;
+      mostraMessaggio('');
+      // Le chiamate al database vanno fatte fuori da questa funzione, come chiede Supabase
+      setTimeout(async () => {
+        await trasferisciVecchieVoci();
+        await caricaVoci();
+      }, 0);
     });
 
     // Tema chiaro/scuro: parte da quello del Mac e ricorda la scelta fatta col pulsante
@@ -246,9 +366,6 @@
     let temaSalvato = null;
     try { temaSalvato = localStorage.getItem('tema'); } catch {}
     applicaTema(temaSalvato);
-
-    carica().forEach((voce) => aggiungiVoce(voce.testo, voce.fatto));
-    aggiornaConteggio();
   </script>
 </body>
 </html>

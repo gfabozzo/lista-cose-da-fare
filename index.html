@@ -10,8 +10,14 @@
     form { display: flex; gap: 8px; }
     input { flex: 1; padding: 8px; font-size: 1rem; }
     button { padding: 8px 14px; font-size: 1rem; cursor: pointer; }
-    li { padding: 6px 0; cursor: pointer; }
-    li.fatto { text-decoration: line-through; color: #999; }
+    ul { padding-left: 0; list-style: none; }
+    li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #eee; }
+    li span { flex: 1; cursor: pointer; }
+    li.fatto span { text-decoration: line-through; color: #999; }
+    .elimina { padding: 2px 8px; border: none; background: none; color: #c33; font-size: 1.1rem; }
+    .elimina:hover { background: #fdeaea; border-radius: 4px; }
+    #fondo { display: flex; justify-content: space-between; align-items: center; color: #555; }
+    #svuota { font-size: 0.9rem; padding: 6px 10px; }
   </style>
 </head>
 <body>
@@ -21,13 +27,17 @@
     <button>Aggiungi</button>
   </form>
   <ul id="lista"></ul>
-  <p id="conteggio">Nessuna cosa da fare</p>
+  <div id="fondo">
+    <p id="conteggio">Nessuna cosa da fare</p>
+    <button id="svuota" hidden>Svuota completate</button>
+  </div>
 
   <script>
     const form = document.getElementById('form');
     const testo = document.getElementById('testo');
     const lista = document.getElementById('lista');
     const conteggio = document.getElementById('conteggio');
+    const svuota = document.getElementById('svuota');
 
     const CHIAVE = 'cose-da-fare';
 
@@ -36,12 +46,14 @@
       conteggio.textContent = restanti === 0 ? 'Nessuna cosa da fare'
         : restanti === 1 ? 'Ti resta 1 cosa da fare'
         : `Ti restano ${restanti} cose da fare`;
+      // Il pulsante compare solo se c'è almeno una voce completata
+      svuota.hidden = !lista.querySelector('li.fatto');
     }
 
     // Salva la lista nel browser, così resta anche dopo aver ricaricato la pagina
     function salva() {
       const voci = [...lista.children].map((li) => ({
-        testo: li.textContent,
+        testo: li.querySelector('span').textContent,
         fatto: li.classList.contains('fatto'),
       }));
       try { localStorage.setItem(CHIAVE, JSON.stringify(voci)); } catch {}
@@ -53,15 +65,35 @@
 
     function aggiungiVoce(testoVoce, fatto) {
       const li = document.createElement('li');
-      li.textContent = testoVoce;
       if (fatto) li.classList.add('fatto');
-      li.addEventListener('click', () => {
+
+      const span = document.createElement('span');
+      span.textContent = testoVoce;
+      span.addEventListener('click', () => {
         li.classList.toggle('fatto');
         aggiornaConteggio();
         salva();
       });
+
+      const elimina = document.createElement('button');
+      elimina.className = 'elimina';
+      elimina.textContent = '✕';
+      elimina.title = 'Elimina';
+      elimina.addEventListener('click', () => {
+        li.remove();
+        aggiornaConteggio();
+        salva();
+      });
+
+      li.append(span, elimina);
       lista.appendChild(li);
     }
+
+    svuota.addEventListener('click', () => {
+      lista.querySelectorAll('li.fatto').forEach((li) => li.remove());
+      aggiornaConteggio();
+      salva();
+    });
 
     form.addEventListener('submit', (e) => {
       e.preventDefault();

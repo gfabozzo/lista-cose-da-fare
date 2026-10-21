@@ -102,6 +102,8 @@
     #persone .stato { color: var(--tenue); font-size: 0.8rem; }
     #form-invito input { padding: 10px 12px; }
     #form-invito button { padding: 0 14px; }
+    #esci-lista { margin-top: 12px; padding: 6px 10px; border: 1px solid var(--bordo); border-radius: 7px; background: none; color: var(--pericolo); font-size: 0.85rem; }
+    #esci-lista:hover { background: var(--pericolo-sfondo); }
     #condividi .nota { margin: 10px 0 0; color: var(--tenue); font-size: 0.8rem; line-height: 1.4; }
     #account { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--bordo); color: var(--tenue); font-size: 0.85rem; }
     #utente { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -162,6 +164,7 @@
       <button>Invita</button>
     </form>
     <p class="nota">Chi inviti entra nella lista la prima volta che accede al sito con quella email.</p>
+    <button id="esci-lista" hidden>Esci da questa lista</button>
   </details>
   <div id="account">
     <span id="utente"></span>
@@ -286,7 +289,12 @@
 
     // La lista che stai guardando (puoi averne più di una se qualcuno ti invita)
     let listaAttiva = null;
+    let mieListe = [];
     const sceltaLista = document.getElementById('liste');
+
+    function creatoreListaAttiva() {
+      return mieListe.find((l) => l.id === listaAttiva)?.creata_da;
+    }
 
     async function preparaListe() {
       // Accetta gli inviti per la tua email e crea la tua prima lista se non ne hai
@@ -296,8 +304,9 @@
         mostraMessaggio('Non riesco a caricare le tue liste: ' + error.message, true);
         return false;
       }
-      let preferita = null;
-      try { preferita = localStorage.getItem('lista-attiva'); } catch {}
+      mieListe = data;
+      let preferita = listaAttiva;
+      try { preferita = preferita || localStorage.getItem('lista-attiva'); } catch {}
       listaAttiva = data.some((l) => l.id === preferita) ? preferita : data[0].id;
 
       sceltaLista.replaceChildren(...data.map((l) => new Option(l.nome, l.id, false, l.id === listaAttiva)));
@@ -324,20 +333,61 @@
         console.error(membri.error || inviti.error);
         return;
       }
+      const creatore = creatoreListaAttiva();
+      const sonoCreatore = creatore === utenteAttuale;
       persone.replaceChildren();
       for (const m of membri.data) {
-        aggiungiPersona(m.email, m.user_id === utenteAttuale ? 'tu' : 'membro');
+        const io = m.user_id === utenteAttuale;
+        const ruolo = m.user_id === creatore ? 'ha creato la lista' : 'membro';
+        // Solo chi ha creato la lista può togliere gli altri
+        const togli = sonoCreatore && !io ? {
+          titolo: 'Togli dalla lista',
+          azione: () => togliMembro(m),
+        } : null;
+        aggiungiPersona(m.email, io ? 'tu · ' + ruolo : ruolo, togli);
       }
       for (const i of inviti.data) {
-        aggiungiPersona(i.email, 'invito in attesa', async () => {
-          const { error } = await db.from('inviti').delete().eq('lista_id', listaAttiva).eq('email', i.email);
-          if (error) mostraMessaggio('Non sono riuscito ad annullare l\'invito: ' + error.message, true);
-          caricaPersone();
+        aggiungiPersona(i.email, 'invito in attesa', {
+          titolo: 'Annulla invito',
+          azione: async () => {
+            const { error } = await db.from('inviti').delete().eq('lista_id', listaAttiva).eq('email', i.email);
+            if (error) mostraMessaggio('Non sono riuscito ad annullare l\'invito: ' + error.message, true);
+            caricaPersone();
+          },
         });
       }
+      // Chi non ha creato la lista può uscirne
+      esci.hidden = sonoCreatore;
     }
 
-    function aggiungiPersona(email, stato, annulla) {
+    async function togliMembro(membro) {
+      if (!confirm(`Vuoi togliere ${membro.email} dalla lista? Non potrà più vederla né modificarla.`)) return;
+      const { error } = await db.from('membri').delete()
+        .eq('lista_id', listaAttiva).eq('user_id', membro.user_id);
+      if (error) {
+        mostraMessaggio('Non sono riuscito a togliere ' + membro.email + ': ' + error.message, true);
+      } else {
+        mostraMessaggio(`${membro.email} non fa più parte della lista.`);
+      }
+      caricaPersone();
+    }
+
+    const esci = document.getElementById('esci-lista');
+    esci.addEventListener('click', async () => {
+      if (!confirm('Vuoi uscire da questa lista? Per rientrare dovrai essere invitato di nuovo.')) return;
+      const { error } = await db.from('membri').delete()
+        .eq('lista_id', listaAttiva).eq('user_id', utenteAttuale);
+      if (error) {
+        mostraMessaggio('Non sono riuscito a farti uscire dalla lista: ' + error.message, true);
+        return;
+      }
+      listaAttiva = null;
+      try { localStorage.removeItem('lista-attiva'); } catch {}
+      mostraMessaggio('Sei uscito dalla lista.');
+      await aggiornaTutto();
+    });
+
+    function aggiungiPersona(email, stato, pulsanteAzione) {
       const li = document.createElement('li');
       const nome = document.createElement('span');
       nome.textContent = email + ' ';
@@ -346,12 +396,12 @@
       etichetta.textContent = '· ' + stato;
       nome.append(etichetta);
       li.append(nome);
-      if (annulla) {
+      if (pulsanteAzione) {
         const pulsante = document.createElement('button');
         pulsante.className = 'elimina';
         pulsante.textContent = '✕';
-        pulsante.title = 'Annulla invito';
-        pulsante.addEventListener('click', annulla);
+        pulsante.title = pulsanteAzione.titolo;
+        pulsante.addEventListener('click', pulsanteAzione.azione);
         li.append(pulsante);
       }
       persone.append(li);
@@ -488,9 +538,16 @@
       }, 0);
     });
 
-    // Quando torni sulla pagina, ricarica la lista: così vedi le modifiche fatte dagli altri
+    // Ricarica liste, voci e persone (per esempio se nel frattempo ti hanno tolto da una lista)
+    async function aggiornaTutto() {
+      if (!(await preparaListe())) return;
+      await caricaVoci();
+      await caricaPersone();
+    }
+
+    // Quando torni sulla pagina, ricarica tutto: così vedi le modifiche fatte dagli altri
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && utenteAttuale && listaAttiva) caricaVoci();
+      if (document.visibilityState === 'visible' && utenteAttuale) aggiornaTutto();
     });
 
     // Tema chiaro/scuro: parte da quello del Mac e ricorda la scelta fatta col pulsante

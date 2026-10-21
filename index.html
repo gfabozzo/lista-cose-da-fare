@@ -21,20 +21,33 @@
     <button>Aggiungi</button>
   </form>
   <ul id="lista"></ul>
+  <p id="conteggio">Nessuna cosa da fare</p>
 
   <script>
     const form = document.getElementById('form');
     const testo = document.getElementById('testo');
     const lista = document.getElementById('lista');
+    const conteggio = document.getElementById('conteggio');
+
+    function aggiornaConteggio() {
+      const restanti = lista.querySelectorAll('li:not(.fatto)').length;
+      conteggio.textContent = restanti === 0 ? 'Nessuna cosa da fare'
+        : restanti === 1 ? 'Ti resta 1 cosa da fare'
+        : `Ti restano ${restanti} cose da fare`;
+    }
 
     form.addEventListener('submit', (e) => {
       e.preventDefault();
       if (!testo.value.trim()) return;
       const li = document.createElement('li');
       li.textContent = testo.value;
-      li.addEventListener('click', () => li.classList.toggle('fatto'));
+      li.addEventListener('click', () => {
+        li.classList.toggle('fatto');
+        aggiornaConteggio();
+      });
       lista.appendChild(li);
       testo.value = '';
+      aggiornaConteggio();
     });
   </script>
 </body>

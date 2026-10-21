@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cose da fare</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; max-width: 480px; margin: 40px auto; padding: 0 16px; background: #fafafa; color: #222; }
+    h1 { font-size: 1.6rem; }
+    form { display: flex; gap: 8px; }
+    input { flex: 1; padding: 8px; font-size: 1rem; }
+    button { padding: 8px 14px; font-size: 1rem; cursor: pointer; }
+    li { padding: 6px 0; cursor: pointer; }
+    li.fatto { text-decoration: line-through; color: #999; }
+  </style>
+</head>
+<body>
+  <h1>Cose da fare</h1>
+  <form id="form">
+    <input id="testo" placeholder="Scrivi una cosa da fare..." autofocus>
+    <button>Aggiungi</button>
+  </form>
+  <ul id="lista"></ul>
+
+  <script>
+    const form = document.getElementById('form');
+    const testo = document.getElementById('testo');
+    const lista = document.getElementById('lista');
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!testo.value.trim()) return;
+      const li = document.createElement('li');
+      li.textContent = testo.value;
+      li.addEventListener('click', () => li.classList.toggle('fatto'));
+      lista.appendChild(li);
+      testo.value = '';
+    });
+  </script>
+</body>
+</html>

@@ -25,6 +25,8 @@
       --pericolo: #d64545;
       --pericolo-sfondo: #fdecec;
       --ombra: 0 8px 30px rgba(0, 0, 0, 0.08);
+      --chi-sfondo: 92%;
+      --chi-testo: 32%;
     }
     /* Colori del tema scuro: automatico se il Mac è in modalità scura... */
     @media (prefers-color-scheme: dark) {
@@ -32,6 +34,7 @@
         --sfondo: #141418; --scheda: #1e1e24; --testo: #ececf1; --tenue: #8b8b96;
         --bordo: #2e2e37; --accento: #8b8bf5; --accento-testo: #141418;
         --pericolo: #f07070; --pericolo-sfondo: #3a2024; --ombra: 0 8px 30px rgba(0, 0, 0, 0.4);
+        --chi-sfondo: 24%; --chi-testo: 82%;
       }
     }
     /* ...oppure scelto con il pulsante */
@@ -39,6 +42,7 @@
       --sfondo: #141418; --scheda: #1e1e24; --testo: #ececf1; --tenue: #8b8b96;
       --bordo: #2e2e37; --accento: #8b8bf5; --accento-testo: #141418;
       --pericolo: #f07070; --pericolo-sfondo: #3a2024; --ombra: 0 8px 30px rgba(0, 0, 0, 0.4);
+      --chi-sfondo: 24%; --chi-testo: 82%;
     }
 
     * { box-sizing: border-box; }
@@ -109,7 +113,15 @@
     #esci-lista:hover { background: var(--pericolo-sfondo); }
     #condividi .nota { margin: 10px 0 0; color: var(--tenue); font-size: 0.8rem; line-height: 1.4; }
     #account { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--bordo); color: var(--tenue); font-size: 0.85rem; }
-    #utente { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #utente { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #mio-nome { padding: 4px 10px; border: 1px solid var(--bordo); border-radius: 7px; background: none; color: var(--tenue); font-size: 0.85rem; }
+    #mio-nome:hover { color: var(--testo); }
+    /* Etichetta colorata con il nome di chi ha aggiunto la voce: ogni persona ha la sua tinta (--h) */
+    .chi { flex: none; max-width: 40%; padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 600;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      background: hsl(var(--h, 240) 65% var(--chi-sfondo)); color: hsl(var(--h, 240) 55% var(--chi-testo)); }
+    .chi:empty { display: none; }
+    li.fatto .chi { opacity: 0.5; }
     #esci { padding: 4px 10px; border: 1px solid var(--bordo); border-radius: 7px; background: none; color: var(--tenue); font-size: 0.85rem; }
     #esci:hover { color: var(--testo); }
 
@@ -176,6 +188,7 @@
   </details>
   <div id="account">
     <span id="utente"></span>
+    <button id="mio-nome">✎ Il mio nome</button>
     <button id="esci">Esci</button>
   </div>
   </section>
@@ -252,7 +265,13 @@
       elimina.title = 'Elimina';
       elimina.addEventListener('click', () => eliminaVoce(li));
 
-      li.append(casella, span, elimina);
+      // Chi ha aggiunto la voce: il nome viene riempito da aggiornaEtichette()
+      const chi = document.createElement('small');
+      chi.className = 'chi';
+      chi.dataset.utente = voce.user_id;
+      riempiEtichetta(chi);
+
+      li.append(casella, span, chi, elimina);
       lista.appendChild(li);
     }
 
@@ -381,6 +400,29 @@
     // Mostra chi fa parte della lista e chi è stato invitato
     const persone = document.getElementById('persone');
 
+    // Nome e colore di ogni persona della lista attiva, per le etichette sulle voci
+    let nomiPersone = new Map();
+    let listaCondivisa = false;
+    const TINTE = [265, 25, 145, 200, 330, 45, 175, 0];
+
+    function tintaDi(userId) {
+      let somma = 0;
+      for (const c of userId) somma = (somma * 31 + c.charCodeAt(0)) >>> 0;
+      return somma % TINTE.length;
+    }
+
+    function riempiEtichetta(chi) {
+      const persona = nomiPersone.get(chi.dataset.utente);
+      // Nelle liste non condivise l'etichetta non serve
+      chi.textContent = listaCondivisa && persona ? persona.nome : '';
+      chi.title = listaCondivisa && persona ? 'Aggiunta da ' + persona.nome : '';
+      if (persona) chi.style.setProperty('--h', persona.tinta);
+    }
+
+    function aggiornaEtichette() {
+      lista.querySelectorAll('.chi').forEach(riempiEtichetta);
+    }
+
     async function caricaPersone() {
       const [membri, inviti] = await Promise.all([
         db.from('membri').select('user_id, email').eq('lista_id', listaAttiva),
@@ -390,6 +432,22 @@
         console.error(membri.error || inviti.error);
         return;
       }
+      const profili = await db.from('profili').select('user_id, nome')
+        .in('user_id', membri.data.map((m) => m.user_id));
+      const nomiScelti = new Map((profili.data || []).map((p) => [p.user_id, p.nome]));
+
+      // Ogni persona prende la sua tinta; se è già presa da un altro nella lista, la successiva libera
+      nomiPersone = new Map();
+      const tinteUsate = new Set();
+      for (const m of [...membri.data].sort((a, b) => a.user_id.localeCompare(b.user_id))) {
+        let i = tintaDi(m.user_id);
+        while (tinteUsate.has(i) && tinteUsate.size < TINTE.length) i = (i + 1) % TINTE.length;
+        tinteUsate.add(i);
+        nomiPersone.set(m.user_id, { nome: nomiScelti.get(m.user_id) || m.email.split('@')[0], tinta: TINTE[i] });
+      }
+      listaCondivisa = membri.data.length > 1;
+      aggiornaEtichette();
+
       const creatore = creatoreListaAttiva();
       const sonoCreatore = creatore === utenteAttuale;
       persone.replaceChildren();
@@ -401,7 +459,7 @@
           titolo: 'Togli dalla lista',
           azione: () => togliMembro(m),
         } : null;
-        aggiungiPersona(m.email, io ? 'tu · ' + ruolo : ruolo, togli);
+        aggiungiPersona(m.email, (io ? 'tu · ' : '') + ruolo, togli, nomiPersone.get(m.user_id));
       }
       for (const i of inviti.data) {
         aggiungiPersona(i.email, 'invito in attesa', {
@@ -444,13 +502,23 @@
       await aggiornaTutto();
     });
 
-    function aggiungiPersona(email, stato, pulsanteAzione) {
+    function aggiungiPersona(email, stato, pulsanteAzione, persona) {
       const li = document.createElement('li');
       const nome = document.createElement('span');
-      nome.textContent = email + ' ';
       const etichetta = document.createElement('small');
       etichetta.className = 'stato';
-      etichetta.textContent = '· ' + stato;
+      if (persona) {
+        // Il nome nella pillola colorata, come sulle voci, e l'email accanto
+        const pillola = document.createElement('small');
+        pillola.className = 'chi';
+        pillola.textContent = persona.nome;
+        pillola.style.setProperty('--h', persona.tinta);
+        nome.append(pillola, ' ');
+        etichetta.textContent = email + ' · ' + stato;
+      } else {
+        nome.textContent = email + ' ';
+        etichetta.textContent = '· ' + stato;
+      }
       nome.append(etichetta);
       li.append(nome);
       if (pulsanteAzione) {
@@ -479,7 +547,7 @@
     });
 
     async function caricaVoci() {
-      const { data, error } = await db.from('voci').select('id, testo, fatto').eq('lista_id', listaAttiva).order('creata_il');
+      const { data, error } = await db.from('voci').select('id, testo, fatto, user_id').eq('lista_id', listaAttiva).order('creata_il');
       if (error) {
         console.error(error);
         mostraMessaggio('Non riesco a caricare la lista: ' + error.message, true);
@@ -576,7 +644,7 @@
       const nuovo = testo.value.trim();
       if (!nuovo) return;
       testo.value = '';
-      const { data, error } = await db.from('voci').insert({ testo: nuovo, lista_id: listaAttiva }).select('id, testo, fatto').single();
+      const { data, error } = await db.from('voci').insert({ testo: nuovo, lista_id: listaAttiva }).select('id, testo, fatto, user_id').single();
       if (gestisciErrore(error)) return;
       // Potrebbe essere già arrivata tramite il tempo reale
       if (!trovaVoce(data.id)) aggiungiVoce(data);
@@ -616,6 +684,20 @@
     });
 
     document.getElementById('esci').addEventListener('click', () => db.auth.signOut());
+
+    // Il nome con cui ti vedono le persone con cui condividi le liste
+    document.getElementById('mio-nome').addEventListener('click', async () => {
+      const attuale = nomiPersone.get(utenteAttuale)?.nome || '';
+      const nome = prompt('Come vuoi farti chiamare nelle liste condivise?', attuale)?.trim();
+      if (!nome || nome === attuale) return;
+      const { error } = await db.from('profili').upsert({ user_id: utenteAttuale, nome: nome.slice(0, 40) });
+      if (error) {
+        mostraMessaggio('Non sono riuscito a salvare il nome: ' + error.message, true);
+        return;
+      }
+      mostraMessaggio(`D'ora in poi ti vedranno come "${nome.slice(0, 40)}".`);
+      caricaPersone();
+    });
 
     // Mostra il login o la lista a seconda che tu abbia fatto l'accesso
     let utenteAttuale = null;

@@ -77,6 +77,9 @@
 
     ul { padding: 0; margin: 0; list-style: none; }
     li { display: flex; align-items: center; gap: 12px; padding: 12px 4px; border-bottom: 1px solid var(--bordo); }
+    .maniglia { flex: none; padding: 4px 2px; color: var(--tenue); font-size: 1.1rem; line-height: 1; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+    .maniglia:active { cursor: grabbing; }
+    li.fantasma { opacity: 0.4; background: var(--sfondo); }
     li input[type="checkbox"] { width: 20px; height: 20px; margin: 0; accent-color: var(--accento); cursor: pointer; }
     li span { flex: 1; cursor: text; word-break: break-word; }
     li .modifica { flex: 1; padding: 6px 8px; }
@@ -195,6 +198,7 @@
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
   <script>
     // Collegamento a Supabase: questi due valori sono pensati per stare in una pagina pubblica.
     // La protezione dei dati è data dalle regole nel database (vedi supabase/schema.sql).
@@ -241,6 +245,13 @@
     function aggiungiVoce(voce) {
       const li = document.createElement('li');
       li.dataset.id = voce.id;
+      li.dataset.posizione = voce.posizione;
+
+      // Maniglia per trascinare la voce (non è uno <span>, perché lo span è il testo della voce)
+      const maniglia = document.createElement('div');
+      maniglia.className = 'maniglia';
+      maniglia.textContent = '⠿';
+      maniglia.title = 'Trascina per spostare';
       if (voce.fatto) li.classList.add('fatto');
 
       const casella = document.createElement('input');
@@ -271,8 +282,8 @@
       chi.dataset.utente = voce.user_id;
       riempiEtichetta(chi);
 
-      li.append(casella, span, chi, elimina);
-      lista.appendChild(li);
+      li.append(maniglia, casella, span, chi, elimina);
+      inserisciInOrdine(li);
     }
 
     async function eliminaVoce(li) {
@@ -546,8 +557,35 @@
       caricaPersone();
     });
 
+    // Mette la voce al suo posto in base alla posizione
+    function inserisciInOrdine(li) {
+      const dopo = [...lista.children].find((altra) => altra !== li && Number(altra.dataset.posizione) > Number(li.dataset.posizione));
+      lista.insertBefore(li, dopo || null);
+    }
+
+    // Trascinamento delle voci: la nuova posizione è a metà tra le due voci vicine
+    Sortable.create(lista, {
+      handle: '.maniglia',
+      animation: 150,
+      ghostClass: 'fantasma',
+      onEnd: async ({ item: li, oldIndex, newIndex }) => {
+        if (oldIndex === newIndex) return;
+        const prima = li.previousElementSibling;
+        const dopo = li.nextElementSibling;
+        const pPrima = prima ? Number(prima.dataset.posizione) : null;
+        const pDopo = dopo ? Number(dopo.dataset.posizione) : null;
+        const nuova = prima && dopo ? (pPrima + pDopo) / 2
+          : prima ? pPrima + 1
+          : dopo ? pDopo - 1
+          : 0;
+        li.dataset.posizione = nuova;
+        const { error } = await db.from('voci').update({ posizione: nuova }).eq('id', li.dataset.id);
+        gestisciErrore(error);
+      },
+    });
+
     async function caricaVoci() {
-      const { data, error } = await db.from('voci').select('id, testo, fatto, user_id').eq('lista_id', listaAttiva).order('creata_il');
+      const { data, error } = await db.from('voci').select('id, testo, fatto, user_id, posizione').eq('lista_id', listaAttiva).order('posizione');
       if (error) {
         console.error(error);
         mostraMessaggio('Non riesco a caricare la lista: ' + error.message, true);
@@ -583,6 +621,11 @@
             // Se in quel momento la stai modificando tu, il testo non viene toccato
             const span = li.querySelector('span');
             if (span) span.textContent = voce.testo;
+            // Se qualcuno l'ha spostata, la sposta anche qui
+            if (Number(li.dataset.posizione) !== voce.posizione) {
+              li.dataset.posizione = voce.posizione;
+              inserisciInOrdine(li);
+            }
             aggiornaConteggio();
           })
         // Le eliminazioni non si possono filtrare per lista: arriva solo l'id della voce
@@ -644,7 +687,7 @@
       const nuovo = testo.value.trim();
       if (!nuovo) return;
       testo.value = '';
-      const { data, error } = await db.from('voci').insert({ testo: nuovo, lista_id: listaAttiva }).select('id, testo, fatto, user_id').single();
+      const { data, error } = await db.from('voci').insert({ testo: nuovo, lista_id: listaAttiva }).select('id, testo, fatto, user_id, posizione').single();
       if (gestisciErrore(error)) return;
       // Potrebbe essere già arrivata tramite il tempo reale
       if (!trovaVoce(data.id)) aggiungiVoce(data);

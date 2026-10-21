@@ -12,7 +12,8 @@
     button { padding: 8px 14px; font-size: 1rem; cursor: pointer; }
     ul { padding-left: 0; list-style: none; }
     li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #eee; }
-    li span { flex: 1; cursor: pointer; }
+    li span { flex: 1; cursor: text; }
+    li .modifica { flex: 1; padding: 4px; }
     li.fatto span { text-decoration: line-through; color: #999; }
     .elimina { padding: 2px 8px; border: none; background: none; color: #c33; font-size: 1.1rem; }
     .elimina:hover { background: #fdeaea; border-radius: 4px; }
@@ -67,13 +68,20 @@
       const li = document.createElement('li');
       if (fatto) li.classList.add('fatto');
 
-      const span = document.createElement('span');
-      span.textContent = testoVoce;
-      span.addEventListener('click', () => {
-        li.classList.toggle('fatto');
+      const casella = document.createElement('input');
+      casella.type = 'checkbox';
+      casella.checked = fatto;
+      casella.title = 'Segna come fatta';
+      casella.addEventListener('change', () => {
+        li.classList.toggle('fatto', casella.checked);
         aggiornaConteggio();
         salva();
       });
+
+      const span = document.createElement('span');
+      span.textContent = testoVoce;
+      span.title = 'Doppio clic per modificare';
+      span.addEventListener('dblclick', () => modificaVoce(li, span));
 
       const elimina = document.createElement('button');
       elimina.className = 'elimina';
@@ -85,8 +93,40 @@
         salva();
       });
 
-      li.append(span, elimina);
+      li.append(casella, span, elimina);
       lista.appendChild(li);
+    }
+
+    // Sostituisce il testo con un campo modificabile: Invio salva, Esc annulla
+    function modificaVoce(li, span) {
+      const campo = document.createElement('input');
+      campo.className = 'modifica';
+      campo.value = span.textContent;
+      span.replaceWith(campo);
+      campo.focus();
+      campo.select();
+
+      let finito = false;
+      function chiudi(conferma) {
+        if (finito) return;
+        finito = true;
+        const nuovo = campo.value.trim();
+        if (conferma && !nuovo) {
+          // Se il testo è stato cancellato, elimina la voce
+          li.remove();
+        } else {
+          if (conferma) span.textContent = nuovo;
+          campo.replaceWith(span);
+        }
+        aggiornaConteggio();
+        salva();
+      }
+
+      campo.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') chiudi(true);
+        if (e.key === 'Escape') chiudi(false);
+      });
+      campo.addEventListener('blur', () => chiudi(true));
     }
 
     svuota.addEventListener('click', () => {

@@ -29,6 +29,8 @@
     const lista = document.getElementById('lista');
     const conteggio = document.getElementById('conteggio');
 
+    const CHIAVE = 'cose-da-fare';
+
     function aggiornaConteggio() {
       const restanti = lista.querySelectorAll('li:not(.fatto)').length;
       conteggio.textContent = restanti === 0 ? 'Nessuna cosa da fare'
@@ -36,19 +38,42 @@
         : `Ti restano ${restanti} cose da fare`;
     }
 
-    form.addEventListener('submit', (e) => {
-      e.preventDefault();
-      if (!testo.value.trim()) return;
+    // Salva la lista nel browser, così resta anche dopo aver ricaricato la pagina
+    function salva() {
+      const voci = [...lista.children].map((li) => ({
+        testo: li.textContent,
+        fatto: li.classList.contains('fatto'),
+      }));
+      try { localStorage.setItem(CHIAVE, JSON.stringify(voci)); } catch {}
+    }
+
+    function carica() {
+      try { return JSON.parse(localStorage.getItem(CHIAVE)) || []; } catch { return []; }
+    }
+
+    function aggiungiVoce(testoVoce, fatto) {
       const li = document.createElement('li');
-      li.textContent = testo.value;
+      li.textContent = testoVoce;
+      if (fatto) li.classList.add('fatto');
       li.addEventListener('click', () => {
         li.classList.toggle('fatto');
         aggiornaConteggio();
+        salva();
       });
       lista.appendChild(li);
+    }
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!testo.value.trim()) return;
+      aggiungiVoce(testo.value, false);
       testo.value = '';
       aggiornaConteggio();
+      salva();
     });
+
+    carica().forEach((voce) => aggiungiVoce(voce.testo, voce.fatto));
+    aggiornaConteggio();
   </script>
 </body>
 </html>

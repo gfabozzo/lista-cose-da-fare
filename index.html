@@ -107,7 +107,14 @@
     #barra-liste button { width: 42px; flex: none; border: 1px solid var(--bordo); border-radius: 10px; background: var(--sfondo); font-size: 1rem; }
     #barra-liste button:hover { border-color: var(--accento); }
     #liste { flex: 1; min-width: 0; padding: 10px 12px; font: inherit; font-weight: 600; color: var(--testo); background: var(--sfondo); border: 1px solid var(--bordo); border-radius: 10px; }
-    #condividi { margin-top: 20px; padding: 12px 14px; border: 1px solid var(--bordo); border-radius: 12px; }
+    #esporta { margin-top: 20px; padding: 12px 14px; border: 1px solid var(--bordo); border-radius: 12px; }
+    #esporta summary { cursor: pointer; font-weight: 600; }
+    #esporta[open] summary { margin-bottom: 10px; }
+    #esporta .nota { margin: 10px 0 0; color: var(--tenue); font-size: 0.8rem; }
+    #pulsanti-esporta { display: flex; flex-wrap: wrap; gap: 6px; }
+    #pulsanti-esporta button { padding: 8px 12px; border: 1px solid var(--bordo); border-radius: 10px; background: var(--sfondo); font-size: 0.85rem; }
+    #pulsanti-esporta button:hover { border-color: var(--accento); }
+    #condividi { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--bordo); border-radius: 12px; }
     #condividi summary { cursor: pointer; font-weight: 600; }
     #condividi[open] summary { margin-bottom: 10px; }
     #persone li { padding: 8px 0; font-size: 0.9rem; }
@@ -149,6 +156,18 @@
     li.fatto .chi { opacity: 0.5; }
     #esci { padding: 4px 10px; border: 1px solid var(--bordo); border-radius: 7px; background: none; color: var(--tenue); font-size: 0.85rem; }
     #esci:hover { color: var(--testo); }
+
+    /* In stampa: solo il titolo della lista e le voci, in bianco e nero */
+    @media print {
+      :root { --sfondo: #fff; --scheda: #fff; --testo: #000; --tenue: #555; --bordo: #ccc; --ombra: none; }
+      body { padding: 0; background: #fff; }
+      main { box-shadow: none; padding: 0; max-width: none; }
+      header, #accesso, #messaggio, #barra-liste, #form, #filtri, #fondo, #esporta, #condividi, #account,
+      .maniglia, .quantita button, .elimina, .togli-scadenza, .scadenza.vuota { display: none !important; }
+      #titolo-stampa { display: block !important; margin: 0 0 12px; }
+      #lista li { display: flex !important; break-inside: avoid; }
+      .chi, .scadenza { background: none !important; color: #555 !important; border: 1px solid #ccc; }
+    }
 
     @media (max-width: 480px) {
       body { padding: 16px; }
@@ -197,11 +216,21 @@
     <button data-filtro="fatte">Fatte</button>
     <button data-filtro="scadenza">In scadenza</button>
   </div>
+  <h2 id="titolo-stampa" hidden></h2>
   <ul id="lista" data-filtro="tutte"></ul>
   <div id="fondo">
     <p id="conteggio">Nessuna cosa da fare</p>
     <button id="svuota" hidden>Svuota completate</button>
   </div>
+  <details id="esporta">
+    <summary>📤 Esporta la lista</summary>
+    <div id="pulsanti-esporta">
+      <button id="copia-testo">📋 Copia come testo</button>
+      <button id="scarica-csv">⬇️ Scarica per Excel</button>
+      <button id="stampa">🖨️ Stampa o PDF</button>
+    </div>
+    <p class="nota">Il testo copiato si può incollare in un messaggio, per esempio su WhatsApp.</p>
+  </details>
   <details id="condividi">
     <summary>👥 Condividi la lista</summary>
     <ul id="persone"></ul>
@@ -877,6 +906,59 @@
     });
 
     document.getElementById('esci').addEventListener('click', () => db.auth.signOut());
+
+    // Esportazione: le voci della lista attiva (tutte, anche quelle nascoste dai filtri)
+    function vociDaEsportare() {
+      return [...lista.children].map((li) => ({
+        testo: li.querySelector('span')?.textContent ?? li.querySelector('.modifica')?.value ?? '',
+        fatta: li.classList.contains('fatto'),
+        quantita: Number(li.dataset.quantita) || 1,
+        scadenza: li.dataset.scadenza || '',
+        chi: nomiPersone.get(li.querySelector('.chi')?.dataset.utente)?.nome || '',
+      }));
+    }
+
+    function nomeListaAttiva() {
+      return mieListe.find((l) => l.id === listaAttiva)?.nome || 'Lista';
+    }
+
+    function dataLeggibile(iso) {
+      const [anno, mese, giorno] = iso.split('-').map(Number);
+      return new Date(anno, mese - 1, giorno).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+
+    document.getElementById('copia-testo').addEventListener('click', async () => {
+      const righe = vociDaEsportare().map((v) =>
+        (v.fatta ? '✅ ' : '⬜ ') + v.testo
+        + (v.quantita > 1 ? ' ×' + v.quantita : '')
+        + (v.scadenza ? ' (entro ' + dataLeggibile(v.scadenza) + ')' : ''));
+      const testoLista = nomeListaAttiva() + '\n\n' + righe.join('\n');
+      try {
+        await navigator.clipboard.writeText(testoLista);
+        mostraMessaggio('Lista copiata! Ora puoi incollarla dove vuoi.');
+      } catch {
+        // Se il browser non permette di copiare, mostra il testo da copiare a mano
+        prompt('Copia questo testo:', testoLista);
+      }
+    });
+
+    document.getElementById('scarica-csv').addEventListener('click', () => {
+      // Il punto e virgola e il segno iniziale (BOM) fanno aprire il file correttamente in Excel in italiano
+      const cella = (valore) => '"' + String(valore).replaceAll('"', '""') + '"';
+      const righe = [['Voce', 'Quantità', 'Fatta', 'Scadenza', 'Aggiunta da']]
+        .concat(vociDaEsportare().map((v) => [v.testo, v.quantita, v.fatta ? 'sì' : 'no', v.scadenza, v.chi]));
+      const csv = '﻿' + righe.map((r) => r.map(cella).join(';')).join('\r\n');
+      const collegamento = document.createElement('a');
+      collegamento.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+      collegamento.download = `${nomeListaAttiva()} ${oggiIso()}.csv`.replace(/[\\/:*?"<>|]/g, '-');
+      collegamento.click();
+      setTimeout(() => URL.revokeObjectURL(collegamento.href), 1000);
+    });
+
+    document.getElementById('stampa').addEventListener('click', () => {
+      document.getElementById('titolo-stampa').textContent = nomeListaAttiva();
+      window.print();
+    });
 
     // Il nome con cui ti vedono le persone con cui condividi le liste
     document.getElementById('mio-nome').addEventListener('click', async () => {

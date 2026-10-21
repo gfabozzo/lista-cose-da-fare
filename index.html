@@ -431,6 +431,52 @@
       lista.replaceChildren();
       data.forEach(aggiungiVoce);
       aggiornaConteggio();
+      ascoltaModifiche();
+    }
+
+    // Tempo reale: il database avvisa quando qualcuno aggiunge, modifica o elimina una voce
+    let canale = null;
+    let canaleLista = null;
+
+    function ascoltaModifiche() {
+      if (canale && canaleLista === listaAttiva) return;
+      smettiDiAscoltare();
+      canaleLista = listaAttiva;
+      canale = db.channel('voci-' + listaAttiva)
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'voci', filter: `lista_id=eq.${listaAttiva}` },
+          ({ new: voce }) => {
+            if (trovaVoce(voce.id)) return;
+            aggiungiVoce(voce);
+            aggiornaConteggio();
+          })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'voci', filter: `lista_id=eq.${listaAttiva}` },
+          ({ new: voce }) => {
+            const li = trovaVoce(voce.id);
+            if (!li) return;
+            li.classList.toggle('fatto', voce.fatto);
+            li.querySelector('input[type="checkbox"]').checked = voce.fatto;
+            // Se in quel momento la stai modificando tu, il testo non viene toccato
+            const span = li.querySelector('span');
+            if (span) span.textContent = voce.testo;
+            aggiornaConteggio();
+          })
+        // Le eliminazioni non si possono filtrare per lista: arriva solo l'id della voce
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'voci' },
+          ({ old: voce }) => {
+            trovaVoce(voce.id)?.remove();
+            aggiornaConteggio();
+          })
+        .subscribe();
+    }
+
+    function smettiDiAscoltare() {
+      if (canale) db.removeChannel(canale);
+      canale = null;
+      canaleLista = null;
+    }
+
+    function trovaVoce(id) {
+      return [...lista.children].find((li) => li.dataset.id === id);
     }
 
     // La prima volta che accedi, sposta nel database le voci salvate prima solo nel browser
@@ -475,7 +521,8 @@
       testo.value = '';
       const { data, error } = await db.from('voci').insert({ testo: nuovo, lista_id: listaAttiva }).select('id, testo, fatto').single();
       if (gestisciErrore(error)) return;
-      aggiungiVoce(data);
+      // Potrebbe essere già arrivata tramite il tempo reale
+      if (!trovaVoce(data.id)) aggiungiVoce(data);
       aggiornaConteggio();
     });
 
@@ -523,6 +570,7 @@
       accesso.hidden = !!utente;
       app.hidden = !utente;
       lista.replaceChildren();
+      smettiDiAscoltare();
       if (!utente) {
         mostraMessaggio('');
         return;

@@ -93,7 +93,10 @@
     #accesso p { margin: 0 0 16px; color: var(--tenue); line-height: 1.5; }
     #messaggio { margin: 16px 0 0; padding: 10px 14px; border-radius: 10px; background: var(--sfondo); font-size: 0.9rem; line-height: 1.5; }
     #messaggio.errore { background: var(--pericolo-sfondo); color: var(--pericolo); }
-    #liste { width: 100%; margin-bottom: 12px; padding: 10px 12px; font: inherit; font-weight: 600; color: var(--testo); background: var(--sfondo); border: 1px solid var(--bordo); border-radius: 10px; }
+    #barra-liste { display: flex; gap: 6px; margin-bottom: 12px; }
+    #barra-liste button { width: 42px; flex: none; border: 1px solid var(--bordo); border-radius: 10px; background: var(--sfondo); font-size: 1rem; }
+    #barra-liste button:hover { border-color: var(--accento); }
+    #liste { flex: 1; min-width: 0; padding: 10px 12px; font: inherit; font-weight: 600; color: var(--testo); background: var(--sfondo); border: 1px solid var(--bordo); border-radius: 10px; }
     #condividi { margin-top: 20px; padding: 12px 14px; border: 1px solid var(--bordo); border-radius: 12px; }
     #condividi summary { cursor: pointer; font-weight: 600; }
     #condividi[open] summary { margin-bottom: 10px; }
@@ -141,7 +144,12 @@
   <p id="messaggio" hidden></p>
 
   <section id="app" hidden>
-  <select id="liste" title="Scegli la lista" hidden></select>
+  <div id="barra-liste">
+    <select id="liste" title="Scegli la lista"></select>
+    <button id="nuova-lista" title="Nuova lista">＋</button>
+    <button id="rinomina-lista" title="Rinomina la lista">✎</button>
+    <button id="elimina-lista" title="Elimina la lista" hidden>🗑</button>
+  </div>
   <form id="form">
     <input id="testo" placeholder="Scrivi una cosa da fare..." autofocus>
     <button>Aggiungi</button>
@@ -309,16 +317,65 @@
       try { preferita = preferita || localStorage.getItem('lista-attiva'); } catch {}
       listaAttiva = data.some((l) => l.id === preferita) ? preferita : data[0].id;
 
-      sceltaLista.replaceChildren(...data.map((l) => new Option(l.nome, l.id, false, l.id === listaAttiva)));
-      sceltaLista.hidden = data.length < 2;
+      mostraListe();
       return true;
     }
 
-    sceltaLista.addEventListener('change', () => {
-      listaAttiva = sceltaLista.value;
+    function mostraListe() {
+      sceltaLista.replaceChildren(...mieListe.map((l) => new Option(l.nome, l.id, false, l.id === listaAttiva)));
+      // Solo chi ha creato la lista può eliminarla
+      document.getElementById('elimina-lista').hidden = creatoreListaAttiva() !== utenteAttuale;
+    }
+
+    function apriLista(id) {
+      listaAttiva = id;
       try { localStorage.setItem('lista-attiva', listaAttiva); } catch {}
+      mostraListe();
       caricaVoci();
       caricaPersone();
+    }
+
+    sceltaLista.addEventListener('change', () => apriLista(sceltaLista.value));
+
+    document.getElementById('nuova-lista').addEventListener('click', async () => {
+      const nome = prompt('Come vuoi chiamare la nuova lista?', 'Spesa')?.trim();
+      if (!nome) return;
+      const { data, error } = await db.rpc('crea_lista', { nome_lista: nome.slice(0, 100) });
+      if (error) {
+        mostraMessaggio('Non sono riuscito a creare la lista: ' + error.message, true);
+        return;
+      }
+      mieListe.push(data);
+      apriLista(data.id);
+      mostraMessaggio(`Lista "${data.nome}" creata. Puoi condividerla da "Condividi la lista".`);
+    });
+
+    document.getElementById('rinomina-lista').addEventListener('click', async () => {
+      const attuale = mieListe.find((l) => l.id === listaAttiva);
+      const nome = prompt('Nuovo nome della lista:', attuale.nome)?.trim();
+      if (!nome || nome === attuale.nome) return;
+      const { error } = await db.from('liste').update({ nome: nome.slice(0, 100) }).eq('id', listaAttiva);
+      if (error) {
+        mostraMessaggio('Non sono riuscito a rinominare la lista: ' + error.message, true);
+        return;
+      }
+      attuale.nome = nome.slice(0, 100);
+      mostraListe();
+    });
+
+    document.getElementById('elimina-lista').addEventListener('click', async () => {
+      const attuale = mieListe.find((l) => l.id === listaAttiva);
+      if (!confirm(`Vuoi eliminare la lista "${attuale.nome}" con tutte le sue voci? Sparirà anche per le persone con cui la condividi.`)) return;
+      const { error } = await db.from('liste').delete().eq('id', listaAttiva);
+      if (error) {
+        mostraMessaggio('Non sono riuscito a eliminare la lista: ' + error.message, true);
+        return;
+      }
+      listaAttiva = null;
+      try { localStorage.removeItem('lista-attiva'); } catch {}
+      mostraMessaggio(`Lista "${attuale.nome}" eliminata.`);
+      // Se era l'ultima, ne viene creata una nuova vuota
+      await aggiornaTutto();
     });
 
     // Mostra chi fa parte della lista e chi è stato invitato

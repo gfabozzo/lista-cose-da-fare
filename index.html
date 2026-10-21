@@ -72,7 +72,7 @@
     form button:hover { filter: brightness(1.08); }
 
     #filtri { display: flex; gap: 4px; margin: 20px 0 8px; padding: 4px; background: var(--sfondo); border-radius: 10px; }
-    #filtri button { flex: 1; padding: 6px 10px; border: none; border-radius: 7px; background: none; font-size: 0.9rem; color: var(--tenue); }
+    #filtri button { flex: 1; white-space: nowrap; padding: 6px 4px; border: none; border-radius: 7px; background: none; font-size: 0.9rem; color: var(--tenue); }
     #filtri button.attivo { background: var(--scheda); color: var(--testo); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); }
 
     ul { padding: 0; margin: 0; list-style: none; }
@@ -90,7 +90,8 @@
     li:hover .elimina, .elimina:focus { opacity: 1; }
     .elimina:hover { background: var(--pericolo-sfondo); }
     #lista[data-filtro="dafare"] li.fatto,
-    #lista[data-filtro="fatte"] li:not(.fatto) { display: none; }
+    #lista[data-filtro="fatte"] li:not(.fatto),
+    #lista[data-filtro="scadenza"] li:not(.urgente) { display: none; }
 
     #fondo { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; color: var(--tenue); font-size: 0.9rem; }
     #fondo p { margin: 0; }
@@ -133,6 +134,15 @@
     .quantita .numero { min-width: 26px; text-align: center; font-size: 0.85rem; color: var(--tenue); font-variant-numeric: tabular-nums; }
     li.piu-di-uno .quantita .numero { color: var(--accento); font-weight: 700; }
     li.fatto .quantita { opacity: 0.5; }
+    /* Scadenza: rossa se in ritardo, arancione se è per oggi o domani */
+    .scadenza { position: relative; flex: none; display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px;
+      background: var(--sfondo); color: var(--tenue); font-size: 0.75rem; font-weight: 600; cursor: pointer; }
+    .scadenza input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }
+    .scadenza.vuota { background: none; opacity: 0.35; padding: 2px 4px; }
+    li:hover .scadenza.vuota, .scadenza.vuota:focus-within { opacity: 1; }
+    li.vicina .scadenza { background: hsl(30 90% var(--chi-sfondo)); color: hsl(30 80% var(--chi-testo)); }
+    li.in-ritardo .scadenza { background: var(--pericolo-sfondo); color: var(--pericolo); }
+    li.fatto .scadenza { opacity: 0.5; }
     li.fatto .chi { opacity: 0.5; }
     #esci { padding: 4px 10px; border: 1px solid var(--bordo); border-radius: 7px; background: none; color: var(--tenue); font-size: 0.85rem; }
     #esci:hover { color: var(--testo); }
@@ -181,7 +191,8 @@
   <div id="filtri">
     <button data-filtro="tutte" class="attivo">Tutte</button>
     <button data-filtro="dafare">Da fare</button>
-    <button data-filtro="fatte">Completate</button>
+    <button data-filtro="fatte">Fatte</button>
+    <button data-filtro="scadenza">In scadenza</button>
   </div>
   <ul id="lista" data-filtro="tutte"></ul>
   <div id="fondo">
@@ -273,6 +284,7 @@
       casella.title = 'Segna come fatta';
       casella.addEventListener('change', async () => {
         li.classList.toggle('fatto', casella.checked);
+        mostraScadenza(li, li.dataset.scadenza);
         aggiornaConteggio();
         const { error } = await db.from('voci').update({ fatto: casella.checked }).eq('id', li.dataset.id);
         gestisciErrore(error);
@@ -313,11 +325,67 @@
       // Testo e nome di chi l'ha aggiunta stanno insieme: su schermi stretti il nome va a capo sotto il testo
       const corpo = document.createElement('div');
       corpo.className = 'corpo';
-      corpo.append(span, chi);
+      corpo.append(span, chi, creaScadenza(li));
 
       li.append(maniglia, casella, corpo, quantita, elimina);
       mostraQuantita(li, voce.quantita ?? 1);
+      mostraScadenza(li, voce.scadenza);
       inserisciInOrdine(li);
+    }
+
+    // Scadenza: un pulsante 📅 con sopra un selettore di data invisibile
+    function creaScadenza(li) {
+      const etichetta = document.createElement('label');
+      etichetta.className = 'scadenza';
+      const testoData = document.createElement('small');
+      const campo = document.createElement('input');
+      campo.type = 'date';
+      campo.title = 'Scadenza';
+      // Sul computer il calendario va aperto esplicitamente; sul telefono si apre da solo
+      campo.addEventListener('click', () => { try { campo.showPicker(); } catch {} });
+      campo.addEventListener('change', async () => {
+        const nuova = campo.value || null;
+        mostraScadenza(li, nuova);
+        const { error } = await db.from('voci').update({ scadenza: nuova }).eq('id', li.dataset.id);
+        gestisciErrore(error);
+      });
+      etichetta.append(testoData, campo);
+      return etichetta;
+    }
+
+    // Data di oggi come "2026-10-22", nel fuso orario di chi guarda
+    function oggiIso(spostamentoGiorni = 0) {
+      const d = new Date();
+      d.setDate(d.getDate() + spostamentoGiorni);
+      return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
+    }
+
+    function mostraScadenza(li, scadenza) {
+      const etichetta = li.querySelector('.scadenza');
+      const testoData = etichetta.querySelector('small');
+      etichetta.querySelector('input').value = scadenza || '';
+      li.dataset.scadenza = scadenza || '';
+      li.classList.remove('in-ritardo', 'vicina', 'urgente');
+      etichetta.classList.toggle('vuota', !scadenza);
+      if (!scadenza) {
+        testoData.textContent = '📅';
+        etichetta.title = 'Aggiungi una scadenza';
+        return;
+      }
+      const oggi = oggiIso();
+      const nomi = { [oggiIso(-1)]: 'ieri', [oggi]: 'oggi', [oggiIso(1)]: 'domani' };
+      const [anno, mese, giorno] = scadenza.split('-').map(Number);
+      const data = new Date(anno, mese - 1, giorno);
+      testoData.textContent = '📅 ' + (nomi[scadenza] || data.toLocaleDateString('it-IT', {
+        day: 'numeric', month: 'short', ...(anno !== new Date().getFullYear() && { year: 'numeric' }),
+      }));
+      etichetta.title = 'Scadenza: ' + data.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      // Le date si possono confrontare come testo perché sono nel formato anno-mese-giorno
+      if (!li.classList.contains('fatto')) {
+        if (scadenza < oggi) li.classList.add('in-ritardo', 'urgente');
+        else if (scadenza <= oggiIso(1)) li.classList.add('vicina', 'urgente');
+        else if (scadenza <= oggiIso(7)) li.classList.add('urgente');
+      }
     }
 
     function mostraQuantita(li, quantita) {
@@ -633,7 +701,7 @@
     });
 
     async function caricaVoci() {
-      const { data, error } = await db.from('voci').select('id, testo, fatto, user_id, posizione, quantita').eq('lista_id', listaAttiva).order('posizione');
+      const { data, error } = await db.from('voci').select('id, testo, fatto, user_id, posizione, quantita, scadenza').eq('lista_id', listaAttiva).order('posizione');
       if (error) {
         console.error(error);
         mostraMessaggio('Non riesco a caricare la lista: ' + error.message, true);
@@ -670,6 +738,7 @@
             const span = li.querySelector('span');
             if (span) span.textContent = voce.testo;
             mostraQuantita(li, voce.quantita ?? 1);
+            mostraScadenza(li, voce.scadenza);
             // Se qualcuno l'ha spostata, la sposta anche qui
             if (Number(li.dataset.posizione) !== voce.posizione) {
               li.dataset.posizione = voce.posizione;
@@ -744,7 +813,7 @@
       const { testo: nuovo, quantita } = leggiQuantita(testo.value.trim());
       if (!nuovo) return;
       testo.value = '';
-      const { data, error } = await db.from('voci').insert({ testo: nuovo, quantita, lista_id: listaAttiva }).select('id, testo, fatto, user_id, posizione, quantita').single();
+      const { data, error } = await db.from('voci').insert({ testo: nuovo, quantita, lista_id: listaAttiva }).select('id, testo, fatto, user_id, posizione, quantita, scadenza').single();
       if (gestisciErrore(error)) return;
       // Potrebbe essere già arrivata tramite il tempo reale
       if (!trovaVoce(data.id)) aggiungiVoce(data);

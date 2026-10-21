@@ -906,12 +906,35 @@
       mostraMessaggio('');
       // Le chiamate al database vanno fatte fuori da questa funzione, come chiede Supabase
       setTimeout(async () => {
-        if (!(await preparaListe())) return;
-        await trasferisciVecchieVoci();
-        await caricaVoci();
-        await caricaPersone();
+        const controllo = setTimeout(caricamentoBloccato, 8000);
+        try {
+          if (!(await preparaListe())) return;
+          await trasferisciVecchieVoci();
+          await caricaVoci();
+          await caricaPersone();
+        } finally {
+          clearTimeout(controllo);
+        }
       }, 0);
     });
+
+    // A volte, dopo tanto tempo che la pagina non veniva aperta, il caricamento resta in attesa
+    // per sempre. In quel caso ricarica la pagina una volta; se non basta, lo dice invece di restare vuota.
+    function caricamentoBloccato() {
+      let giaRicaricata = false;
+      try { giaRicaricata = sessionStorage.getItem('ricaricata') === 'si'; } catch {}
+      if (!giaRicaricata) {
+        try { sessionStorage.setItem('ricaricata', 'si'); } catch {}
+        location.reload();
+        return;
+      }
+      mostraMessaggio('La lista non si carica. Controlla la connessione e ricarica la pagina.', true);
+    }
+
+    // Se la pagina si è caricata bene, la prossima volta potrà ricaricarsi di nuovo se serve
+    window.addEventListener('load', () => setTimeout(() => {
+      if (listaAttiva) try { sessionStorage.removeItem('ricaricata'); } catch {}
+    }, 10000));
 
     // Ricarica liste, voci e persone (per esempio se nel frattempo ti hanno tolto da una lista)
     async function aggiornaTutto() {

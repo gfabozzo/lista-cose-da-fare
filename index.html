@@ -157,13 +157,19 @@
     li.piu-di-uno .quantita .numero { color: var(--accento); font-weight: 700; }
     li.fatto .quantita { opacity: 0.5; }
     /* Scadenza: rossa se in ritardo, arancione se è per oggi o domani */
-    .gruppo-scadenza { flex: none; display: inline-flex; align-items: center; gap: 2px; }
+    .gruppo-scadenza { flex: 0 1 auto; min-width: 0; max-width: 100%; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 2px; }
     .togli-scadenza { width: 22px; height: 22px; padding: 0; border: none; border-radius: 999px; background: none; color: var(--tenue); font-size: 0.7rem; }
     .togli-scadenza:hover { color: var(--pericolo); background: var(--pericolo-sfondo); }
     .scadenza { position: relative; flex: none; display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px;
       background: var(--sfondo); color: var(--tenue); font-size: 0.75rem; font-weight: 600; cursor: pointer; }
     .scadenza input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }
     .scadenza.vuota { background: none; opacity: 0.35; padding: 2px 4px; }
+    .ripeti { position: relative; flex: none; display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px;
+      background: var(--sfondo); color: var(--accento); font-size: 0.75rem; font-weight: 600; cursor: pointer; }
+    .ripeti select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; }
+    .ripeti.vuota { background: none; color: var(--tenue); opacity: 0.35; padding: 2px 4px; }
+    li:hover .ripeti.vuota, .ripeti.vuota:focus-within { opacity: 1; }
+    body.offline .ripeti { opacity: 0.35; pointer-events: none; }
     li:hover .scadenza.vuota, .scadenza.vuota:focus-within { opacity: 1; }
     li.vicina .scadenza { background: hsl(30 90% var(--chi-sfondo)); color: hsl(30 80% var(--chi-testo)); }
     li.in-ritardo .scadenza { background: var(--pericolo-sfondo); color: var(--pericolo); }
@@ -346,19 +352,26 @@
         posizione: Number(li.dataset.posizione),
         quantita: Number(li.dataset.quantita) || 1,
         scadenza: li.dataset.scadenza || null,
+        ripeti: li.dataset.ripeti || null,
       })));
     }
 
-    // Spunte fatte senza connessione: { id della voce: fatta sì/no }
-    function mettiInAttesa(id, fatto) {
-      scriviCopia('in-attesa', { ...leggiCopia('in-attesa', {}), [id]: fatto });
+    // Modifiche fatte senza connessione: { id della voce: { campi da salvare } }
+    // (le versioni precedenti salvavano solo sì/no per "fatta": vengono lette allo stesso modo)
+    function campiInAttesa(valore) {
+      return typeof valore === 'boolean' ? { fatto: valore } : valore;
+    }
+
+    function mettiInAttesa(id, campi) {
+      const inAttesa = leggiCopia('in-attesa', {});
+      scriviCopia('in-attesa', { ...inAttesa, [id]: { ...campiInAttesa(inAttesa[id] ?? {}), ...campi } });
       aggiornaStatoRete();
     }
 
     async function inviaInAttesa() {
       const inAttesa = leggiCopia('in-attesa', {});
-      for (const [id, fatto] of Object.entries(inAttesa)) {
-        const { error } = await db.from('voci').update({ fatto }).eq('id', id);
+      for (const [id, valore] of Object.entries(inAttesa)) {
+        const { error } = await db.from('voci').update(campiInAttesa(valore)).eq('id', id);
         if (error && eErroreDiRete(error)) return; // la rete è di nuovo caduta: si riprova dopo
         delete inAttesa[id];
         scriviCopia('in-attesa', inAttesa);
@@ -415,13 +428,20 @@
       casella.checked = voce.fatto;
       casella.title = 'Segna come fatta';
       casella.addEventListener('change', async () => {
-        li.classList.toggle('fatto', casella.checked);
-        mostraScadenza(li, li.dataset.scadenza);
+        let campi = { fatto: casella.checked };
+        if (casella.checked && li.dataset.ripeti) {
+          // Voce ricorrente: invece di restare fatta, si sposta alla prossima scadenza
+          const prossima = prossimaScadenza(li.dataset.scadenza || oggiIso(), li.dataset.ripeti);
+          campi = { fatto: false, scadenza: prossima };
+          casella.checked = false;
+          mostraMessaggio(`Fatto! "${span.textContent}" torna ${prossima === oggiIso(1) ? 'domani' : 'il ' + dataLeggibile(prossima)}.`);
+        }
+        li.classList.toggle('fatto', campi.fatto);
+        mostraScadenza(li, campi.scadenza ?? li.dataset.scadenza);
         aggiornaConteggio();
-        const fatto = casella.checked;
-        if (!navigator.onLine) return mettiInAttesa(li.dataset.id, fatto);
-        const { error } = await db.from('voci').update({ fatto }).eq('id', li.dataset.id);
-        if (error && eErroreDiRete(error)) return mettiInAttesa(li.dataset.id, fatto);
+        if (!navigator.onLine) return mettiInAttesa(li.dataset.id, campi);
+        const { error } = await db.from('voci').update(campi).eq('id', li.dataset.id);
+        if (error && eErroreDiRete(error)) return mettiInAttesa(li.dataset.id, campi);
         gestisciErrore(error);
       });
 
@@ -464,6 +484,7 @@
 
       li.append(maniglia, casella, corpo, quantita, elimina);
       mostraQuantita(li, voce.quantita ?? 1);
+      mostraRipeti(li, voce.ripeti);
       mostraScadenza(li, voce.scadenza);
       inserisciInOrdine(li);
     }
@@ -499,7 +520,7 @@
 
       const gruppo = document.createElement('div');
       gruppo.className = 'gruppo-scadenza';
-      gruppo.append(etichetta, togli);
+      gruppo.append(etichetta, togli, creaRipeti(li));
       return gruppo;
     }
 
@@ -508,6 +529,63 @@
       const d = new Date();
       d.setDate(d.getDate() + spostamentoGiorni);
       return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
+    }
+
+    // ---- Voci ricorrenti ----
+    const NOMI_RIPETI = { giorno: 'ogni giorno', settimana: 'ogni settimana', mese: 'ogni mese', anno: 'ogni anno' };
+
+    // Un 🔁 con sopra un menu invisibile per scegliere ogni quanto si ripete la voce
+    function creaRipeti(li) {
+      const etichetta = document.createElement('label');
+      etichetta.className = 'ripeti';
+      const testoRipeti = document.createElement('small');
+      const scelta = document.createElement('select');
+      scelta.title = 'Si ripete';
+      scelta.append(new Option('Non si ripete', ''),
+        ...Object.entries(NOMI_RIPETI).map(([valore, nome]) => new Option(nome[0].toUpperCase() + nome.slice(1), valore)));
+      scelta.addEventListener('change', async () => {
+        const campi = { ripeti: scelta.value || null };
+        // Una voce ricorrente senza data parte da oggi
+        if (campi.ripeti && !li.dataset.scadenza) campi.scadenza = oggiIso();
+        mostraRipeti(li, campi.ripeti);
+        if (campi.scadenza) mostraScadenza(li, campi.scadenza);
+        salvaCopiaVoci();
+        const { error } = await db.from('voci').update(campi).eq('id', li.dataset.id);
+        gestisciErrore(error);
+      });
+      etichetta.append(testoRipeti, scelta);
+      return etichetta;
+    }
+
+    function mostraRipeti(li, ripeti) {
+      const etichetta = li.querySelector('.ripeti');
+      li.dataset.ripeti = ripeti || '';
+      etichetta.querySelector('select').value = ripeti || '';
+      etichetta.querySelector('small').textContent = ripeti ? '🔁 ' + NOMI_RIPETI[ripeti] : '🔁';
+      etichetta.title = ripeti ? 'Si ripete ' + NOMI_RIPETI[ripeti] : 'Fai ripetere questa voce';
+      etichetta.classList.toggle('vuota', !ripeti);
+    }
+
+    // La data dopo "dataIso" di un giorno, una settimana, un mese o un anno; se finisse nel passato
+    // o oggi (voce in ritardo), va avanti finché non arriva a una data futura
+    function prossimaScadenza(dataIso, ripeti) {
+      const [anno, mese, giorno] = dataIso.split('-').map(Number);
+      const oggi = oggiIso();
+      let n = 0;
+      let prossima;
+      do {
+        n++;
+        let d;
+        if (ripeti === 'giorno') d = new Date(anno, mese - 1, giorno + n);
+        else if (ripeti === 'settimana') d = new Date(anno, mese - 1, giorno + 7 * n);
+        else {
+          // Mesi e anni: stesso giorno del mese, ma il 31 diventa l'ultimo giorno dei mesi più corti
+          d = ripeti === 'mese' ? new Date(anno, mese - 1 + n, 1) : new Date(anno + n, mese - 1, 1);
+          d.setDate(Math.min(giorno, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+        }
+        prossima = [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
+      } while (prossima <= oggi && n < 1000);
+      return prossima;
     }
 
     function mostraScadenza(li, scadenza) {
@@ -909,12 +987,12 @@
 
     async function caricaVoci() {
       let { data, error } = navigator.onLine
-        ? await db.from('voci').select('id, testo, fatto, user_id, posizione, quantita, scadenza').eq('lista_id', listaAttiva).order('posizione')
+        ? await db.from('voci').select('id, testo, fatto, user_id, posizione, quantita, scadenza, ripeti').eq('lista_id', listaAttiva).order('posizione')
         : { data: null, error: { message: 'offline' } };
       const senzaRete = error && eErroreDiRete(error);
       if (senzaRete && leggiCopia('voci-' + listaAttiva, null)) {
         const inAttesa = leggiCopia('in-attesa', {});
-        data = leggiCopia('voci-' + listaAttiva, []).map((v) => (v.id in inAttesa ? { ...v, fatto: inAttesa[v.id] } : v));
+        data = leggiCopia('voci-' + listaAttiva, []).map((v) => (v.id in inAttesa ? { ...v, ...campiInAttesa(inAttesa[v.id]) } : v));
         error = null;
       }
       if (error) {
@@ -956,6 +1034,7 @@
             const span = li.querySelector('span');
             if (span) span.textContent = voce.testo;
             mostraQuantita(li, voce.quantita ?? 1);
+            mostraRipeti(li, voce.ripeti);
             mostraScadenza(li, voce.scadenza);
             // Se qualcuno l'ha spostata, la sposta anche qui
             if (Number(li.dataset.posizione) !== voce.posizione) {
@@ -1058,7 +1137,7 @@
       const { testo: nuovo, quantita } = leggiQuantita(testo.value.trim());
       if (!nuovo) return;
       testo.value = '';
-      const { data, error } = await db.from('voci').insert({ testo: nuovo, quantita, lista_id: listaAttiva }).select('id, testo, fatto, user_id, posizione, quantita, scadenza').single();
+      const { data, error } = await db.from('voci').insert({ testo: nuovo, quantita, lista_id: listaAttiva }).select('id, testo, fatto, user_id, posizione, quantita, scadenza, ripeti').single();
       if (gestisciErrore(error)) return;
       // Potrebbe essere già arrivata tramite il tempo reale
       if (!trovaVoce(data.id)) aggiungiVoce(data);
@@ -1107,6 +1186,7 @@
         fatta: li.classList.contains('fatto'),
         quantita: Number(li.dataset.quantita) || 1,
         scadenza: li.dataset.scadenza || '',
+        ripeti: li.dataset.ripeti || '',
         chi: nomiPersone.get(li.querySelector('.chi')?.dataset.utente)?.nome || '',
       }));
     }
@@ -1124,7 +1204,8 @@
       const righe = vociDaEsportare().map((v) =>
         (v.fatta ? '✅ ' : '⬜ ') + v.testo
         + (v.quantita > 1 ? ' ×' + v.quantita : '')
-        + (v.scadenza ? ' (entro ' + dataLeggibile(v.scadenza) + ')' : ''));
+        + (v.scadenza ? ' (entro ' + dataLeggibile(v.scadenza) + ')' : '')
+        + (v.ripeti ? ' 🔁 ' + NOMI_RIPETI[v.ripeti] : ''));
       const testoLista = nomeListaAttiva() + '\n\n' + righe.join('\n');
       try {
         await navigator.clipboard.writeText(testoLista);
@@ -1138,8 +1219,8 @@
     document.getElementById('scarica-csv').addEventListener('click', () => {
       // Il punto e virgola e il segno iniziale (BOM) fanno aprire il file correttamente in Excel in italiano
       const cella = (valore) => '"' + String(valore).replaceAll('"', '""') + '"';
-      const righe = [['Voce', 'Quantità', 'Fatta', 'Scadenza', 'Aggiunta da']]
-        .concat(vociDaEsportare().map((v) => [v.testo, v.quantita, v.fatta ? 'sì' : 'no', v.scadenza, v.chi]));
+      const righe = [['Voce', 'Quantità', 'Fatta', 'Scadenza', 'Si ripete', 'Aggiunta da']]
+        .concat(vociDaEsportare().map((v) => [v.testo, v.quantita, v.fatta ? 'sì' : 'no', v.scadenza, NOMI_RIPETI[v.ripeti] || '', v.chi]));
       const csv = '﻿' + righe.map((r) => r.map(cella).join(';')).join('\r\n');
       const collegamento = document.createElement('a');
       collegamento.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));

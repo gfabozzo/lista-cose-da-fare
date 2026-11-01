@@ -265,7 +265,7 @@
   </section>
   </main>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
   <script>
     // Collegamento a Supabase: questi due valori sono pensati per stare in una pagina pubblica.
@@ -1101,7 +1101,8 @@
       accesso.hidden = !!utente;
       app.hidden = !utente;
       lista.replaceChildren();
-      smettiDiAscoltare();
+      // Anche questa chiamata a Supabase va fatta fuori da questa funzione, altrimenti può bloccare l'accesso
+      setTimeout(smettiDiAscoltare, 0);
       if (!utente) {
         mostraMessaggio('');
         return;

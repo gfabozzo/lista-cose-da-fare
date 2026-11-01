@@ -2,9 +2,9 @@
 // Le pagine del sito: prende sempre la versione più recente dalla rete; la copia salvata si usa solo offline.
 // Le librerie (Supabase e Sortable) hanno la versione nell'indirizzo, quindi non cambiano: si usa la copia salvata.
 // Le richieste al database (Supabase) non passano di qui: i dati offline li salva la pagina.
-const CACHE = 'cose-da-fare-v2';
+const CACHE = 'cose-da-fare-v3';
 const LIBRERIE = [
-  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js',
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js',
   'https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js',
 ];
 

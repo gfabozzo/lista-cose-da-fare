@@ -104,6 +104,11 @@
     #codice { letter-spacing: 0.2em; }
     #accesso p { margin: 0 0 16px; color: var(--tenue); line-height: 1.5; }
     #messaggio { margin: 16px 0 0; padding: 10px 14px; border-radius: 10px; background: var(--sfondo); font-size: 0.9rem; line-height: 1.5; }
+    #avviso-annulla { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 10;
+      display: flex; align-items: center; gap: 14px; max-width: calc(100% - 24px); padding: 10px 10px 10px 16px;
+      border-radius: 12px; background: var(--testo); color: var(--scheda); box-shadow: var(--ombra); font-size: 0.9rem; }
+    #testo-annulla { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #annulla { flex: none; padding: 6px 12px; border: none; border-radius: 8px; background: var(--accento); color: var(--accento-testo); font-weight: 700; }
     #stato-rete { margin: 16px 0 0; padding: 10px 14px; border-radius: 10px; font-size: 0.9rem; line-height: 1.5;
       background: hsl(30 90% var(--chi-sfondo)); color: hsl(30 80% var(--chi-testo)); }
     /* Senza connessione si può solo guardare e spuntare: il resto è disattivato */
@@ -213,6 +218,10 @@
 
   <p id="messaggio" hidden></p>
   <p id="stato-rete" hidden></p>
+  <div id="avviso-annulla" hidden>
+    <span id="testo-annulla"></span>
+    <button id="annulla">Annulla</button>
+  </div>
 
   <section id="app" hidden>
   <div id="barra-liste">
@@ -222,7 +231,8 @@
     <button id="elimina-lista" title="Elimina la lista" hidden>🗑</button>
   </div>
   <form id="form">
-    <input id="testo" placeholder="Scrivi una cosa da fare..." autofocus>
+    <input id="testo" placeholder="Scrivi una cosa da fare..." autofocus list="suggerimenti" autocomplete="off">
+    <datalist id="suggerimenti"></datalist>
     <button>Aggiungi</button>
   </form>
   <div id="filtri">
@@ -543,12 +553,49 @@
       gestisciErrore(error);
     }
 
-    async function eliminaVoce(li) {
-      li.remove();
+    function eliminaVoce(li) {
+      eliminaConAnnulla([li], `"${li.querySelector('span')?.textContent ?? 'Voce'}" eliminata`);
+    }
+
+    // ---- Annulla eliminazione ----
+    // Le voci spariscono subito, ma vengono cancellate dal database solo dopo 6 secondi:
+    // fino ad allora il pulsante "Annulla" le rimette al loro posto.
+    let eliminazioneInAttesa = null;
+    const avvisoAnnulla = document.getElementById('avviso-annulla');
+
+    function eliminaConAnnulla(voci, descrizione) {
+      confermaEliminazione(); // se ce n'era già una in attesa, la completa subito
+      voci.forEach((li) => li.remove());
       aggiornaConteggio();
-      const { error } = await db.from('voci').delete().eq('id', li.dataset.id);
+      document.getElementById('testo-annulla').textContent = descrizione;
+      avvisoAnnulla.hidden = false;
+      eliminazioneInAttesa = { voci, timer: setTimeout(confermaEliminazione, 6000) };
+    }
+
+    async function confermaEliminazione() {
+      if (!eliminazioneInAttesa) return;
+      const { voci, timer } = eliminazioneInAttesa;
+      eliminazioneInAttesa = null;
+      clearTimeout(timer);
+      avvisoAnnulla.hidden = true;
+      const { error } = await db.from('voci').delete().in('id', voci.map((li) => li.dataset.id));
       gestisciErrore(error);
     }
+
+    document.getElementById('annulla').addEventListener('click', () => {
+      if (!eliminazioneInAttesa) return;
+      const { voci, timer } = eliminazioneInAttesa;
+      eliminazioneInAttesa = null;
+      clearTimeout(timer);
+      avvisoAnnulla.hidden = true;
+      voci.filter((li) => !trovaVoce(li.dataset.id)).forEach(inserisciInOrdine);
+      aggiornaConteggio();
+    });
+
+    // Se chiudi l'app o cambi lista mentre l'avviso è visibile, l'eliminazione viene completata subito
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') confermaEliminazione();
+    });
 
     // Sostituisce il testo con un campo modificabile: Invio salva, Esc annulla
     function modificaVoce(li, span) {
@@ -621,6 +668,7 @@
     }
 
     function apriLista(id) {
+      confermaEliminazione();
       listaAttiva = id;
       try { localStorage.setItem('lista-attiva', listaAttiva); } catch {}
       mostraListe();
@@ -874,10 +922,13 @@
         mostraMessaggio('Non riesco a caricare la lista: ' + error.message, true);
         return;
       }
+      // Le voci appena eliminate (in attesa di "Annulla") non devono ricomparire
+      const inEliminazione = new Set(eliminazioneInAttesa?.voci.map((li) => li.dataset.id) ?? []);
       lista.replaceChildren();
-      data.forEach(aggiungiVoce);
+      data.filter((v) => !inEliminazione.has(v.id)).forEach(aggiungiVoce);
       aggiornaConteggio();
       if (!senzaRete) ascoltaModifiche();
+      aggiornaSuggerimenti();
     }
 
     // Tempo reale: il database avvisa quando qualcuno aggiunge, modifica o elimina una voce
@@ -959,13 +1010,40 @@
       lista.dataset.filtro = pulsante.dataset.filtro;
     });
 
-    svuota.addEventListener('click', async () => {
+    svuota.addEventListener('click', () => {
       const completate = [...lista.querySelectorAll('li.fatto')];
-      completate.forEach((li) => li.remove());
-      aggiornaConteggio();
-      const { error } = await db.from('voci').delete().in('id', completate.map((li) => li.dataset.id));
-      gestisciErrore(error);
+      eliminaConAnnulla(completate, completate.length === 1 ? '1 voce completata eliminata' : `${completate.length} voci completate eliminate`);
     });
+
+    // ---- Suggerimenti mentre scrivi ----
+    // Vengono dalle voci di tutte le tue liste e da quelle che hai aggiunto in passato su questo dispositivo
+    // (anche se poi sono state eliminate). Le più usate compaiono per prime.
+    let testiDalDatabase = null;
+
+    function ricordaPerSuggerimenti(testoVoce) {
+      const storico = leggiCopia('storico', []).filter((s) => s.toLowerCase() !== testoVoce.toLowerCase());
+      scriviCopia('storico', [testoVoce, ...storico].slice(0, 300));
+      aggiornaSuggerimenti();
+    }
+
+    async function aggiornaSuggerimenti() {
+      if (testiDalDatabase === null && navigator.onLine) {
+        const { data } = await db.from('voci').select('testo').limit(1000);
+        testiDalDatabase = (data || []).map((v) => v.testo);
+      }
+      // Non suggerire quello che è già nella lista e non ancora fatto
+      const giaPresenti = new Set([...lista.querySelectorAll('li:not(.fatto) .corpo > span')].map((s) => s.textContent.toLowerCase()));
+      const conteggi = new Map();
+      for (const testoVoce of [...leggiCopia('storico', []), ...(testiDalDatabase || [])]) {
+        const chiave = testoVoce.trim().toLowerCase();
+        if (!chiave || giaPresenti.has(chiave)) continue;
+        const voce = conteggi.get(chiave) || { testo: testoVoce.trim(), volte: 0 };
+        voce.volte++;
+        conteggi.set(chiave, voce);
+      }
+      const ordinati = [...conteggi.values()].sort((a, b) => b.volte - a.volte).slice(0, 200);
+      document.getElementById('suggerimenti').replaceChildren(...ordinati.map((v) => new Option('', v.testo)));
+    }
 
     // "Latte x2", "Latte ×2" o "2x Latte" diventano la voce "Latte" con quantità 2
     function leggiQuantita(scritto) {
@@ -985,6 +1063,7 @@
       // Potrebbe essere già arrivata tramite il tempo reale
       if (!trovaVoce(data.id)) aggiungiVoce(data);
       aggiornaConteggio();
+      ricordaPerSuggerimenti(nuovo);
     });
 
     // Accesso con link via email

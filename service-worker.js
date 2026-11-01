@@ -2,7 +2,9 @@
 // Le pagine del sito: prende sempre la versione più recente dalla rete; la copia salvata si usa solo offline.
 // Le librerie (Supabase e Sortable) hanno la versione nell'indirizzo, quindi non cambiano: si usa la copia salvata.
 // Le richieste al database (Supabase) non passano di qui: i dati offline li salva la pagina.
-const CACHE = 'cose-da-fare-v3';
+const CACHE = 'cose-da-fare-v4';
+// I file del sito, salvati subito per poterlo aprire offline
+const FILE_DEL_SITO = ['./', './stile.css', './app.js'];
 const LIBRERIE = [
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js',
   'https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js',
@@ -10,7 +12,7 @@ const LIBRERIE = [
 
 self.addEventListener('install', (evento) => {
   self.skipWaiting();
-  evento.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(['./', ...LIBRERIE])).catch(() => {}));
+  evento.waitUntil(caches.open(CACHE).then((cache) => cache.addAll([...FILE_DEL_SITO, ...LIBRERIE])).catch(() => {}));
 });
 
 self.addEventListener('activate', (evento) => {
@@ -39,8 +41,10 @@ self.addEventListener('fetch', (evento) => {
 
   if (new URL(richiesta.url).origin !== location.origin) return;
 
+  // "no-cache": chiede sempre al sito se il file è cambiato, così pagina, stile e codice restano della stessa versione
+  const dallaRete = richiesta.mode === 'navigate' ? fetch(richiesta.url, { cache: 'no-cache' }) : fetch(richiesta, { cache: 'no-cache' });
   evento.respondWith(
-    fetch(richiesta)
+    dallaRete
       .then((risposta) => {
         const copia = risposta.clone();
         caches.open(CACHE).then((cache) => cache.put(richiesta, copia));

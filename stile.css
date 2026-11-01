@@ -1,0 +1,187 @@
+/* Grafica della lista: colori, disposizione, tema scuro, versione per telefono e per la stampa */
+
+/* Colori del tema chiaro */
+:root {
+  --sfondo: #f2f3f7;
+  --scheda: #ffffff;
+  --testo: #1d1d1f;
+  --tenue: #8a8a92;
+  --bordo: #e4e5ea;
+  --accento: #5b5bd6;
+  --accento-testo: #ffffff;
+  --pericolo: #d64545;
+  --pericolo-sfondo: #fdecec;
+  --ombra: 0 8px 30px rgba(0, 0, 0, 0.08);
+  --chi-sfondo: 92%;
+  --chi-testo: 32%;
+}
+/* Colori del tema scuro: automatico se il Mac è in modalità scura... */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tema="chiaro"]) {
+    --sfondo: #141418; --scheda: #1e1e24; --testo: #ececf1; --tenue: #8b8b96;
+    --bordo: #2e2e37; --accento: #8b8bf5; --accento-testo: #141418;
+    --pericolo: #f07070; --pericolo-sfondo: #3a2024; --ombra: 0 8px 30px rgba(0, 0, 0, 0.4);
+    --chi-sfondo: 24%; --chi-testo: 82%;
+  }
+}
+/* ...oppure scelto con il pulsante */
+:root[data-tema="scuro"] {
+  --sfondo: #141418; --scheda: #1e1e24; --testo: #ececf1; --tenue: #8b8b96;
+  --bordo: #2e2e37; --accento: #8b8bf5; --accento-testo: #141418;
+  --pericolo: #f07070; --pericolo-sfondo: #3a2024; --ombra: 0 8px 30px rgba(0, 0, 0, 0.4);
+  --chi-sfondo: 24%; --chi-testo: 82%;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+/* Dimensione del testo: tutte le scritte sono in proporzione a questa (18 px invece di 16) */
+html { font-size: 112.5%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--sfondo); color: var(--testo);
+  margin: 0; padding: 48px 16px; transition: background 0.2s, color 0.2s;
+}
+main {
+  max-width: 520px; margin: 0 auto; padding: 28px;
+  background: var(--scheda); border-radius: 18px; box-shadow: var(--ombra);
+}
+header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+h1 { font-size: 1.7rem; margin: 0; letter-spacing: -0.02em; }
+#azioni { display: flex; align-items: center; gap: 8px; }
+#installa { padding: 8px 14px; border: none; border-radius: 999px; background: var(--accento); color: var(--accento-testo); font-size: 0.85rem; font-weight: 600; }
+#tema { border: 1px solid var(--bordo); background: none; border-radius: 999px; width: 40px; height: 40px; padding: 0; font-size: 1.1rem; }
+
+button { font: inherit; cursor: pointer; color: var(--testo); }
+input { font: inherit; color: var(--testo); background: var(--sfondo); border: 1px solid var(--bordo); border-radius: 10px; }
+input:focus { outline: 2px solid var(--accento); outline-offset: -1px; }
+
+form { display: flex; gap: 8px; }
+form input { flex: 1; min-width: 0; padding: 12px 14px; }
+form button { padding: 0 18px; border: none; border-radius: 10px; background: var(--accento); color: var(--accento-testo); font-weight: 600; }
+form button:hover { filter: brightness(1.08); }
+
+#filtri { display: flex; gap: 4px; margin: 20px 0 8px; padding: 4px; background: var(--sfondo); border-radius: 10px; }
+#filtri button { flex: 1; white-space: nowrap; padding: 6px 4px; border: none; border-radius: 7px; background: none; font-size: 0.9rem; color: var(--tenue); }
+#filtri button.attivo { background: var(--scheda); color: var(--testo); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); }
+
+ul { padding: 0; margin: 0; list-style: none; }
+li { display: flex; align-items: center; gap: 12px; padding: 12px 4px; border-bottom: 1px solid var(--bordo); }
+.maniglia { flex: none; padding: 4px 2px; color: var(--tenue); font-size: 1.1rem; line-height: 1; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.maniglia:active { cursor: grabbing; }
+li.fantasma { opacity: 0.4; background: var(--sfondo); }
+li input[type="checkbox"] { width: 22px; height: 22px; margin: 0; accent-color: var(--accento); cursor: pointer; }
+li span { flex: 1; cursor: text; word-break: break-word; }
+li .modifica { flex: 1; padding: 6px 8px; }
+.corpo { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.corpo > span { flex: 1 1 auto; min-width: 0; }
+li.fatto span { text-decoration: line-through; color: var(--tenue); }
+.elimina { padding: 4px 8px; border: none; border-radius: 6px; background: none; color: var(--pericolo); opacity: 0.4; }
+li:hover .elimina, .elimina:focus { opacity: 1; }
+.elimina:hover { background: var(--pericolo-sfondo); }
+#lista[data-filtro="dafare"] li.fatto,
+#lista[data-filtro="fatte"] li:not(.fatto),
+#lista[data-filtro="scadenza"] li:not(.urgente) { display: none; }
+
+#fondo { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; color: var(--tenue); font-size: 0.9rem; }
+#fondo p { margin: 0; }
+#svuota { padding: 6px 10px; border: none; border-radius: 7px; background: none; color: var(--tenue); font-size: 0.9rem; }
+#svuota:hover { color: var(--pericolo); background: var(--pericolo-sfondo); }
+
+#form-codice { margin-top: 10px; }
+#codice { letter-spacing: 0.2em; }
+#accesso p { margin: 0 0 16px; color: var(--tenue); line-height: 1.5; }
+#messaggio { margin: 16px 0 0; padding: 10px 14px; border-radius: 10px; background: var(--sfondo); font-size: 0.9rem; line-height: 1.5; }
+#avviso-annulla { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 10;
+  display: flex; align-items: center; gap: 14px; max-width: calc(100% - 24px); padding: 10px 10px 10px 16px;
+  border-radius: 12px; background: var(--testo); color: var(--scheda); box-shadow: var(--ombra); font-size: 0.9rem; }
+#testo-annulla { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#annulla { flex: none; padding: 6px 12px; border: none; border-radius: 8px; background: var(--accento); color: var(--accento-testo); font-weight: 700; }
+#stato-rete { margin: 16px 0 0; padding: 10px 14px; border-radius: 10px; font-size: 0.9rem; line-height: 1.5;
+  background: hsl(30 90% var(--chi-sfondo)); color: hsl(30 80% var(--chi-testo)); }
+/* Senza connessione si può solo guardare e spuntare: il resto è disattivato */
+body.offline #form, body.offline #barra-liste button, body.offline .quantita button, body.offline .elimina,
+body.offline .togli-scadenza, body.offline .scadenza, body.offline .maniglia, body.offline #svuota,
+body.offline #condividi, body.offline #mio-nome {
+  opacity: 0.35; pointer-events: none; }
+body.offline .corpo > span { pointer-events: none; }
+#messaggio.errore { background: var(--pericolo-sfondo); color: var(--pericolo); }
+#barra-liste { display: flex; gap: 6px; margin-bottom: 12px; }
+#barra-liste button { width: 42px; flex: none; border: 1px solid var(--bordo); border-radius: 10px; background: var(--sfondo); font-size: 1rem; }
+#barra-liste button:hover { border-color: var(--accento); }
+#liste { flex: 1; min-width: 0; padding: 10px 12px; font: inherit; font-weight: 600; color: var(--testo); background: var(--sfondo); border: 1px solid var(--bordo); border-radius: 10px; }
+#esporta { margin-top: 20px; padding: 12px 14px; border: 1px solid var(--bordo); border-radius: 12px; }
+#esporta summary { cursor: pointer; font-weight: 600; }
+#esporta[open] summary { margin-bottom: 10px; }
+#esporta .nota { margin: 10px 0 0; color: var(--tenue); font-size: 0.8rem; }
+#pulsanti-esporta { display: flex; flex-wrap: wrap; gap: 6px; }
+#pulsanti-esporta button { padding: 8px 12px; border: 1px solid var(--bordo); border-radius: 10px; background: var(--sfondo); font-size: 0.85rem; }
+#pulsanti-esporta button:hover { border-color: var(--accento); }
+#condividi { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--bordo); border-radius: 12px; }
+#condividi summary { cursor: pointer; font-weight: 600; }
+#condividi[open] summary { margin-bottom: 10px; }
+#persone li { padding: 8px 0; font-size: 0.9rem; }
+#persone li span { cursor: default; }
+#persone .stato { color: var(--tenue); font-size: 0.8rem; }
+#form-invito input { padding: 10px 12px; }
+#form-invito button { padding: 0 14px; }
+#esci-lista { margin-top: 12px; padding: 6px 10px; border: 1px solid var(--bordo); border-radius: 7px; background: none; color: var(--pericolo); font-size: 0.85rem; }
+#esci-lista:hover { background: var(--pericolo-sfondo); }
+#condividi .nota { margin: 10px 0 0; color: var(--tenue); font-size: 0.8rem; line-height: 1.4; }
+#account { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--bordo); color: var(--tenue); font-size: 0.85rem; }
+#utente { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#mio-nome { padding: 4px 10px; border: 1px solid var(--bordo); border-radius: 7px; background: none; color: var(--tenue); font-size: 0.85rem; }
+#mio-nome:hover { color: var(--testo); }
+/* Etichetta colorata con il nome di chi ha aggiunto la voce: ogni persona ha la sua tinta (--h) */
+.chi { flex: none; max-width: 100%; padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  background: hsl(var(--h, 240) 65% var(--chi-sfondo)); color: hsl(var(--h, 240) 55% var(--chi-testo)); }
+.chi:empty { display: none; }
+/* Quantità: il numero si nota solo se è più di 1; i pulsanti − e + restano discreti */
+.quantita { flex: none; display: flex; align-items: center; gap: 2px; }
+.quantita button { width: 28px; height: 28px; padding: 0; border: 1px solid var(--bordo); border-radius: 7px; background: none; color: var(--tenue); font-size: 0.95rem; line-height: 1; }
+.quantita button:hover { color: var(--testo); border-color: var(--accento); }
+.quantita .numero { min-width: 26px; text-align: center; font-size: 0.85rem; color: var(--tenue); font-variant-numeric: tabular-nums; }
+li.piu-di-uno .quantita .numero { color: var(--accento); font-weight: 700; }
+li.fatto .quantita { opacity: 0.5; }
+/* Scadenza: rossa se in ritardo, arancione se è per oggi o domani */
+.gruppo-scadenza { flex: 0 1 auto; min-width: 0; max-width: 100%; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 2px; }
+.togli-scadenza { width: 22px; height: 22px; padding: 0; border: none; border-radius: 999px; background: none; color: var(--tenue); font-size: 0.7rem; }
+.togli-scadenza:hover { color: var(--pericolo); background: var(--pericolo-sfondo); }
+.scadenza { position: relative; flex: none; display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px;
+  background: var(--sfondo); color: var(--tenue); font-size: 0.75rem; font-weight: 600; cursor: pointer; }
+.scadenza input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }
+.scadenza.vuota { background: none; opacity: 0.35; padding: 2px 4px; }
+.ripeti { position: relative; flex: none; display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px;
+  background: var(--sfondo); color: var(--accento); font-size: 0.75rem; font-weight: 600; cursor: pointer; }
+.ripeti select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; }
+.ripeti.vuota { background: none; color: var(--tenue); opacity: 0.35; padding: 2px 4px; }
+li:hover .ripeti.vuota, .ripeti.vuota:focus-within { opacity: 1; }
+body.offline .ripeti { opacity: 0.35; pointer-events: none; }
+li:hover .scadenza.vuota, .scadenza.vuota:focus-within { opacity: 1; }
+li.vicina .scadenza { background: hsl(30 90% var(--chi-sfondo)); color: hsl(30 80% var(--chi-testo)); }
+li.in-ritardo .scadenza { background: var(--pericolo-sfondo); color: var(--pericolo); }
+li.fatto .scadenza { opacity: 0.5; }
+li.fatto .chi { opacity: 0.5; }
+#esci { padding: 4px 10px; border: 1px solid var(--bordo); border-radius: 7px; background: none; color: var(--tenue); font-size: 0.85rem; }
+#esci:hover { color: var(--testo); }
+
+/* In stampa: solo il titolo della lista e le voci, in bianco e nero */
+@media print {
+  :root { --sfondo: #fff; --scheda: #fff; --testo: #000; --tenue: #555; --bordo: #ccc; --ombra: none; }
+  body { padding: 0; background: #fff; }
+  main { box-shadow: none; padding: 0; max-width: none; }
+  header, #accesso, #messaggio, #barra-liste, #form, #filtri, #fondo, #esporta, #condividi, #account,
+  .maniglia, .quantita button, .elimina, .togli-scadenza, .scadenza.vuota { display: none !important; }
+  #titolo-stampa { display: block !important; margin: 0 0 12px; }
+  #lista li { display: flex !important; break-inside: avoid; }
+  .chi, .scadenza { background: none !important; color: #555 !important; border: 1px solid #ccc; }
+}
+
+@media (max-width: 480px) {
+  /* Sul telefono il testo è ancora più grande: 20 px */
+  html { font-size: 125%; }
+  body { padding: 8px; }
+  main { padding: 16px; border-radius: 14px; }
+  #filtri button { font-size: 0.8rem; }
+  li { gap: 8px; }
+}

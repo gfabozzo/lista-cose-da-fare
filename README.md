@@ -99,7 +99,7 @@ La chiave **publishable** è fatta per stare in una pagina pubblica: la protezio
 3. In **Edge Functions → Deploy a new function → Via Editor**: nome `promemoria`, incolla il contenuto di `supabase/functions/promemoria/index.ts` e pubblica. Poi, nelle impostazioni della funzione, **disattiva "Verify JWT"** (la funzione controlla da sola chi la chiama).
 4. Esegui `supabase/notifiche.sql`: crea la tabella dei dispositivi e l'orologio che chiama la funzione ogni mattina.
 
-Se cambi la funzione, va incollata di nuovo in Supabase: non si aggiorna con `git push`.
+Se cambi la funzione, va incollata di nuovo in Supabase: non si aggiorna con `git push`. Per copiarla senza rovinare emoji e accenti: `LANG=en_US.UTF-8 pbcopy < supabase/functions/promemoria/index.ts`.
 
 ### 5. Pubblicare
 

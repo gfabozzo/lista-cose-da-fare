@@ -61,10 +61,11 @@ async function scadenzeDi(userId: string): Promise<Voce[]> {
 // Il testo della notifica, diviso come il riquadro in cima alla pagina
 function componi(voci: Voce[]) {
   const oggi = giornoInItalia();
+  // Le emoji (⚠️ ⏰ 📅) sono scritte come codici: così non si rovinano copiando il codice in Supabase
   const gruppi = [
-    { titolo: '⚠️ In ritardo', voci: voci.filter((v) => v.scadenza < oggi) },
-    { titolo: '⏰ Oggi', voci: voci.filter((v) => v.scadenza === oggi) },
-    { titolo: '📅 Domani', voci: voci.filter((v) => v.scadenza > oggi) },
+    { titolo: '\u26a0\ufe0f In ritardo', voci: voci.filter((v) => v.scadenza < oggi) },
+    { titolo: '\u23f0 Oggi', voci: voci.filter((v) => v.scadenza === oggi) },
+    { titolo: '\u{1f4c5} Domani', voci: voci.filter((v) => v.scadenza > oggi) },
   ];
   return {
     title: voci.length === 1 ? 'Cose da fare: 1 promemoria' : `Cose da fare: ${voci.length} promemoria`,

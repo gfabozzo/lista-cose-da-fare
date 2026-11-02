@@ -101,7 +101,7 @@ li:hover .elimina, .elimina:focus { opacity: 1; }
 /* Senza connessione si può solo guardare e spuntare: il resto è disattivato */
 body.offline #form, body.offline #barra-liste button, body.offline .quantita button, body.offline .elimina,
 body.offline .togli-scadenza, body.offline .scadenza, body.offline .maniglia, body.offline #svuota,
-body.offline #condividi, body.offline #mio-nome {
+body.offline #condividi, body.offline #notifiche, body.offline #mio-nome {
   opacity: 0.35; pointer-events: none; }
 body.offline .corpo > span { pointer-events: none; }
 /* Promemoria in cima: cose in ritardo, di oggi e di domani in tutte le liste */
@@ -137,6 +137,15 @@ body.offline .corpo > span { pointer-events: none; }
 #form-invito button { padding: 0 14px; }
 #esci-lista { margin-top: 12px; padding: 6px 10px; border: 1px solid var(--bordo); border-radius: 7px; background: none; color: var(--pericolo); font-size: 0.85rem; }
 #esci-lista:hover { background: var(--pericolo-sfondo); }
+#notifiche { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--bordo); border-radius: 12px; }
+#notifiche summary { cursor: pointer; font-weight: 600; }
+#notifiche[open] summary { margin-bottom: 10px; }
+#stato-notifiche { margin: 0 0 10px; font-size: 0.9rem; line-height: 1.5; }
+#pulsanti-notifiche { display: flex; flex-wrap: wrap; gap: 8px; }
+#pulsanti-notifiche button { padding: 8px 12px; border: 1px solid var(--bordo); border-radius: 10px; background: var(--sfondo); color: var(--testo); font: inherit; font-size: 0.9rem; }
+#pulsanti-notifiche button:hover { border-color: var(--accento); }
+#pulsanti-notifiche #attiva-notifiche { background: var(--accento); color: var(--accento-testo); border-color: var(--accento); font-weight: 700; }
+#notifiche .nota { margin: 10px 0 0; color: var(--tenue); font-size: 0.8rem; line-height: 1.4; }
 #condividi .nota { margin: 10px 0 0; color: var(--tenue); font-size: 0.8rem; line-height: 1.4; }
 #account { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--bordo); color: var(--tenue); font-size: 0.85rem; }
 #utente { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -181,7 +190,7 @@ li.fatto .chi { opacity: 0.5; }
   :root { --sfondo: #fff; --scheda: #fff; --testo: #000; --tenue: #555; --bordo: #ccc; --ombra: none; }
   body { padding: 0; background: #fff; }
   main { box-shadow: none; padding: 0; max-width: none; }
-  header, #accesso, #messaggio, #promemoria, #barra-liste, #form, #filtri, #fondo, #esporta, #condividi, #account,
+  header, #accesso, #messaggio, #promemoria, #barra-liste, #form, #filtri, #fondo, #esporta, #condividi, #notifiche, #account,
   .maniglia, .quantita button, .elimina, .togli-scadenza, .scadenza.vuota { display: none !important; }
   #titolo-stampa { display: block !important; margin: 0 0 12px; }
   #lista li { display: flex !important; break-inside: avoid; }

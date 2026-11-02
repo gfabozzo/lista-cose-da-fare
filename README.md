@@ -14,6 +14,7 @@ Una lista delle cose da fare da condividere in famiglia: si usa dal browser o co
 - **Quantità** (− ×2 +), anche scrivendo direttamente "Latte x2".
 - **Scadenze**: rosse se in ritardo, arancioni se per oggi o domani, con il filtro "In scadenza".
 - **Promemoria all'apertura**: un riquadro in cima ricorda le cose in ritardo, di oggi e di domani di tutte le liste. Con ✕ si nasconde fino al giorno dopo.
+- **Notifiche sul telefono**: ogni mattina alle 8 una notifica con le cose in ritardo, di oggi e di domani, anche con l'app chiusa.
 - **Voci ricorrenti**: ogni giorno, settimana, mese o anno. Quando le spunti si spostano alla prossima data.
 - **Riordinare** le voci trascinandole dalla maniglia ⠿.
 - **Suggerimenti** mentre scrivi e **Annulla** dopo un'eliminazione.
@@ -34,6 +35,8 @@ Il sito è fatto di file semplici, senza programmi da installare o compilare.
 | `manifest.webmanifest` | Nome, colori e icone dell'app installata. |
 | `icone/` | Le icone dell'app, create da `strumenti/crea_icone.py`. |
 | `supabase/` | Il codice SQL che prepara il database (vedi sotto). |
+| `supabase/functions/promemoria/` | La funzione che ogni mattina manda le notifiche. |
+| `strumenti/crea_chiavi_notifiche.py` | Crea le chiavi per le notifiche (una volta sola). |
 
 Usa due servizi gratuiti:
 
@@ -58,6 +61,7 @@ Le librerie esterne arrivano da jsDelivr, con la versione scritta nell'indirizzo
    8. `scadenze.sql`
    9. `inviti-creatore.sql`
    10. `ricorrenti.sql`
+   11. `notifiche.sql` (solo dopo aver fatto i passi del punto 4 qui sotto)
 
    Supabase può avvisare che alcuni comandi sono "distruttivi": in questi file `drop policy` toglie solo regole di protezione per sostituirle con quelle nuove, non cancella dati.
 3. In **Authentication → URL Configuration** imposta:
@@ -88,7 +92,16 @@ const SUPABASE_CHIAVE = 'sb_publishable_…';
 
 La chiave **publishable** è fatta per stare in una pagina pubblica: la protezione dei dati sta nelle regole del database. La chiave **secret** (o `service_role`) invece non va mai messa nel sito né condivisa.
 
-### 4. Pubblicare
+### 4. Le notifiche
+
+1. Dalla cartella del progetto, nel Terminale: `python3 strumenti/crea_chiavi_notifiche.py`. Scrive la chiave pubblica in `app.js` e nella funzione, e mostra la chiave **privata**.
+2. In Supabase, **Edge Functions → Secrets**: aggiungi `CHIAVE_PRIVATA_NOTIFICHE` con la chiave privata. Non va scritta da nessun'altra parte.
+3. In **Edge Functions → Deploy a new function → Via Editor**: nome `promemoria`, incolla il contenuto di `supabase/functions/promemoria/index.ts` e pubblica. Poi, nelle impostazioni della funzione, **disattiva "Verify JWT"** (la funzione controlla da sola chi la chiama).
+4. Esegui `supabase/notifiche.sql`: crea la tabella dei dispositivi e l'orologio che chiama la funzione ogni mattina.
+
+Se cambi la funzione, va incollata di nuovo in Supabase: non si aggiorna con `git push`.
+
+### 5. Pubblicare
 
 Nelle impostazioni del repository su GitHub, **Pages** pubblica dal ramo `main`, cartella principale. Dopo ogni `git push` il sito si aggiorna in circa un minuto.
 

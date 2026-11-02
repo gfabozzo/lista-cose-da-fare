@@ -977,7 +977,19 @@ formCodice.addEventListener('submit', async (e) => {
   if (error) mostraMessaggio('Codice non valido o scaduto: ' + error.message, true);
 });
 
-document.getElementById('esci').addEventListener('click', () => db.auth.signOut());
+document.getElementById('esci').addEventListener('click', async () => {
+  // Chi esce non deve più ricevere su questo dispositivo i promemoria delle sue liste
+  try {
+    const iscrizione = 'serviceWorker' in navigator && 'PushManager' in window ? await iscrizioneDiQuestoDispositivo() : null;
+    if (iscrizione) {
+      await db.from('iscrizioni_notifiche').delete().eq('endpoint', iscrizione.endpoint);
+      await iscrizione.unsubscribe();
+    }
+  } catch (errore) {
+    console.error(errore);
+  }
+  db.auth.signOut();
+});
 
 // Esportazione: le voci della lista attiva (tutte, anche quelle nascoste dai filtri)
 function vociDaEsportare() {
@@ -1082,6 +1094,7 @@ db.auth.onAuthStateChange((evento, sessione) => {
       await caricaVoci();
       await caricaPersone();
       await caricaScadenze();
+      aggiornaPannelloNotifiche().catch((errore) => console.error(errore));
     } finally {
       clearTimeout(controllo);
     }
@@ -1118,6 +1131,128 @@ async function aggiornaTutto() {
 // Quando torni sulla pagina, ricarica tutto: così vedi le modifiche fatte dagli altri
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && utenteAttuale) aggiornaTutto();
+});
+
+// ---- Notifiche sul telefono ----
+// Ogni mattina la funzione "promemoria" di Supabase manda una notifica ai dispositivi registrati qui
+// (vedi supabase/notifiche.sql e supabase/functions/promemoria/index.ts).
+const CHIAVE_PUBBLICA_NOTIFICHE = 'METTI_QUI_LA_CHIAVE_PUBBLICA';
+const statoNotifiche = document.getElementById('stato-notifiche');
+const attivaNotifiche = document.getElementById('attiva-notifiche');
+const provaNotifica = document.getElementById('prova-notifica');
+const disattivaNotifiche = document.getElementById('disattiva-notifiche');
+
+function eIphone() {
+  return /iPhone|iPad|iPod/.test(navigator.userAgent);
+}
+
+function eAppInstallata() {
+  return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+}
+
+// La chiave pubblica è scritta in "base64url": il browser la vuole come sequenza di byte
+function byteDaBase64Url(testoBase64) {
+  const normale = (testoBase64 + '='.repeat((4 - testoBase64.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/');
+  return Uint8Array.from(atob(normale), (c) => c.charCodeAt(0));
+}
+
+async function iscrizioneDiQuestoDispositivo() {
+  const registrazione = await navigator.serviceWorker.getRegistration();
+  return registrazione ? registrazione.pushManager.getSubscription() : null;
+}
+
+async function salvaIscrizione(iscrizione) {
+  const { endpoint, keys } = iscrizione.toJSON();
+  return db.from('iscrizioni_notifiche').upsert({ endpoint, p256dh: keys.p256dh, auth: keys.auth });
+}
+
+function mostraStatoNotifiche(testoStato, { attiva = false, prova = false, disattiva = false } = {}) {
+  statoNotifiche.textContent = testoStato;
+  attivaNotifiche.hidden = !attiva;
+  provaNotifica.hidden = !prova;
+  disattivaNotifiche.hidden = !disattiva;
+}
+
+async function aggiornaPannelloNotifiche() {
+  if (!('serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window)) {
+    mostraStatoNotifiche(eIphone() && !eAppInstallata()
+      ? 'Su iPhone le notifiche arrivano solo all\'app aggiunta alla schermata Home: aggiungila e aprila da lì.'
+      : 'Questo browser non può ricevere notifiche.');
+    return;
+  }
+  if (Notification.permission === 'denied') {
+    mostraStatoNotifiche('Hai bloccato le notifiche per questo sito: per riattivarle, cambia il permesso nelle impostazioni del browser o del telefono.');
+    return;
+  }
+  const iscrizione = await iscrizioneDiQuestoDispositivo();
+  if (!iscrizione) {
+    mostraStatoNotifiche('Le notifiche non sono attive su questo dispositivo.', { attiva: true });
+    return;
+  }
+  mostraStatoNotifiche('✅ Le notifiche sono attive su questo dispositivo.', { prova: true, disattiva: true });
+  // Si assicura che il database conosca questo dispositivo (per esempio dopo un nuovo accesso)
+  if (navigator.onLine) {
+    const { error } = await salvaIscrizione(iscrizione);
+    if (error) console.error(error);
+  }
+}
+
+attivaNotifiche.addEventListener('click', async () => {
+  if (CHIAVE_PUBBLICA_NOTIFICHE.startsWith('METTI_QUI')) {
+    mostraMessaggio('Le notifiche non sono ancora configurate: manca la chiave pubblica (vedi README).', true);
+    return;
+  }
+  const permesso = await Notification.requestPermission();
+  if (permesso !== 'granted') {
+    await aggiornaPannelloNotifiche();
+    return;
+  }
+  try {
+    const registrazione = await navigator.serviceWorker.getRegistration();
+    if (!registrazione) throw new Error('il sito non è ancora pronto, ricarica la pagina e riprova');
+    const iscrizione = await registrazione.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: byteDaBase64Url(CHIAVE_PUBBLICA_NOTIFICHE),
+    });
+    const { error } = await salvaIscrizione(iscrizione);
+    if (error) {
+      await iscrizione.unsubscribe();
+      throw error;
+    }
+    mostraMessaggio('Notifiche attivate: ogni mattina alle 8 ti ricordo le cose in scadenza.');
+  } catch (errore) {
+    console.error(errore);
+    mostraMessaggio('Non sono riuscito ad attivare le notifiche: ' + errore.message, true);
+  }
+  await aggiornaPannelloNotifiche();
+});
+
+provaNotifica.addEventListener('click', async () => {
+  provaNotifica.disabled = true;
+  const { data, error } = await db.functions.invoke('promemoria', { body: { prova: true } });
+  provaNotifica.disabled = false;
+  if (error) {
+    console.error(error);
+    mostraMessaggio('Non sono riuscito a mandare la prova: ' + error.message, true);
+  } else if (!data.inviate) {
+    mostraMessaggio('Il server non ha trovato questo dispositivo: disattiva e riattiva le notifiche.', true);
+  } else {
+    mostraMessaggio('Ti ho mandato una notifica di prova: dovrebbe arrivare tra qualche secondo.');
+  }
+});
+
+disattivaNotifiche.addEventListener('click', async () => {
+  const iscrizione = await iscrizioneDiQuestoDispositivo();
+  if (iscrizione) {
+    const { error } = await db.from('iscrizioni_notifiche').delete().eq('endpoint', iscrizione.endpoint);
+    if (error) {
+      mostraMessaggio('Non sono riuscito a disattivare le notifiche: ' + error.message, true);
+      return;
+    }
+    await iscrizione.unsubscribe();
+  }
+  mostraMessaggio('Notifiche disattivate su questo dispositivo.');
+  await aggiornaPannelloNotifiche();
 });
 
 // Tema chiaro/scuro: parte da quello del Mac e ricorda la scelta fatta col pulsante

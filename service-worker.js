@@ -2,7 +2,7 @@
 // Le pagine del sito: prende sempre la versione più recente dalla rete; la copia salvata si usa solo offline.
 // Le librerie (Supabase e Sortable) hanno la versione nell'indirizzo, quindi non cambiano: si usa la copia salvata.
 // Le richieste al database (Supabase) non passano di qui: i dati offline li salva la pagina.
-const CACHE = 'cose-da-fare-v6';
+const CACHE = 'cose-da-fare-v7';
 // I file del sito, salvati subito per poterlo aprire offline
 const FILE_DEL_SITO = ['./', './stile.css', './app.js'];
 const LIBRERIE = [
@@ -59,7 +59,8 @@ self.addEventListener('fetch', (evento) => {
 // Notifiche: il promemoria del mattino arriva qui anche quando l'app è chiusa
 self.addEventListener('push', (evento) => {
   let dati = {};
-  try { dati = evento.data?.json() ?? {}; } catch {}
+  // Legge il testo sempre come UTF-8: Safari sul Mac altrimenti può sbagliare le emoji
+  try { dati = JSON.parse(new TextDecoder('utf-8').decode(evento.data.arrayBuffer())); } catch {}
   evento.waitUntil(self.registration.showNotification(dati.title || 'Cose da fare', {
     body: dati.body || '',
     icon: new URL('icone/icona-192.png', self.registration.scope).href,

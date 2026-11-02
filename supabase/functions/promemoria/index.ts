@@ -76,7 +76,8 @@ async function invia(iscrizione: Iscrizione, messaggio: Messaggio) {
   try {
     await webpush.sendNotification(
       { endpoint: iscrizione.endpoint, keys: { p256dh: iscrizione.p256dh, auth: iscrizione.auth } },
-      JSON.stringify(messaggio),
+      // Lettere accentate ed emoji viaggiano come \u00e8, \u26a0...: così nessun browser le può leggere male
+      JSON.stringify(messaggio).replace(/[\u007f-\uffff]/g, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0')),
       { TTL: 12 * 60 * 60 },
     );
     return true;

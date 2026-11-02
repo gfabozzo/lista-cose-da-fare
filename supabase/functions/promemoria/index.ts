@@ -1,8 +1,9 @@
 // Funzione "promemoria" di Supabase: manda le notifiche delle scadenze ai telefoni.
 // Va incollata in Supabase, Edge Functions (vedi README).
 //
-// Viene chiamata in due modi:
+// Viene chiamata in tre modi:
 // - dall'orologio del database (notifiche.sql), ogni mattina: a chi ha cose in ritardo, di oggi o di domani;
+// - dalla pagina, quando qualcuno aggiunge una voce: agli altri membri di quella lista;
 // - dal pulsante "Manda una prova" della pagina: solo ai dispositivi di chi l'ha premuto.
 import { createClient } from 'npm:@supabase/supabase-js@2.118.0';
 import webpush from 'npm:web-push@3.6.7';
@@ -25,6 +26,8 @@ const CORS = {
 
 type Iscrizione = { endpoint: string; user_id: string; p256dh: string; auth: string };
 type Voce = { testo: string; scadenza: string };
+// "tag": le notifiche con lo stesso tag si sostituiscono; "lista": la lista da aprire toccando la notifica
+type Messaggio = { title: string; body: string; tag?: string; lista?: string };
 
 function rispondi(dati: unknown, stato = 200) {
   return new Response(JSON.stringify(dati), { status: stato, headers: { ...CORS, 'Content-Type': 'application/json' } });
@@ -69,7 +72,7 @@ function componi(voci: Voce[]) {
   };
 }
 
-async function invia(iscrizione: Iscrizione, messaggio: { title: string; body: string }) {
+async function invia(iscrizione: Iscrizione, messaggio: Messaggio) {
   try {
     await webpush.sendNotification(
       { endpoint: iscrizione.endpoint, keys: { p256dh: iscrizione.p256dh, auth: iscrizione.auth } },
@@ -88,21 +91,67 @@ async function invia(iscrizione: Iscrizione, messaggio: { title: string; body: s
   }
 }
 
-// Il pulsante "Manda una prova": solo per chi ha fatto l'accesso, solo ai suoi dispositivi
-async function prova(richiesta: Request) {
+// Chi sta usando la pagina: la pagina manda il suo accesso insieme alla richiesta
+async function chiHaFattoLAccesso(richiesta: Request) {
   const token = richiesta.headers.get('Authorization')?.replace('Bearer ', '') ?? '';
   const { data } = await db.auth.getUser(token);
-  if (!data.user) return rispondi({ errore: 'Devi fare l\'accesso' }, 401);
+  return data.user;
+}
 
-  const { data: iscrizioni, error } = await db.from('iscrizioni_notifiche').select('*').eq('user_id', data.user.id);
+// Il pulsante "Manda una prova": solo per chi ha fatto l'accesso, solo ai suoi dispositivi
+async function prova(richiesta: Request) {
+  const utente = await chiHaFattoLAccesso(richiesta);
+  if (!utente) return rispondi({ errore: 'Devi fare l\'accesso' }, 401);
+
+  const { data: iscrizioni, error } = await db.from('iscrizioni_notifiche').select('*').eq('user_id', utente.id);
   if (error) throw error;
-  const voci = await scadenzeDi(data.user.id);
+  const voci = await scadenzeDi(utente.id);
   const messaggio = voci.length ? componi(voci) : {
     title: 'Cose da fare',
     body: `Le notifiche funzionano! Ogni mattina alle ${ORA_DEL_PROMEMORIA} ti ricordo le cose in scadenza.`,
   };
   let inviate = 0;
   for (const iscrizione of iscrizioni) if (await invia(iscrizione, messaggio)) inviate++;
+  return rispondi({ inviate });
+}
+
+// Qualcuno ha aggiunto una voce: lo sanno subito gli altri membri della lista
+async function voceAggiunta(richiesta: Request, idVoce: string) {
+  const utente = await chiHaFattoLAccesso(richiesta);
+  if (!utente) return rispondi({ errore: 'Devi fare l\'accesso' }, 401);
+
+  // Solo chi ha appena aggiunto la voce può far partire l'avviso
+  const { data: voce, error } = await db.from('voci').select('lista_id, user_id, creata_il').eq('id', idVoce).maybeSingle();
+  if (error) throw error;
+  if (!voce || voce.user_id !== utente.id || Date.now() - Date.parse(voce.creata_il) > 2 * 60 * 1000) {
+    return rispondi({ inviate: 0 });
+  }
+
+  const { data: membri, error: erroreMembri } = await db.from('membri').select('user_id, email').eq('lista_id', voce.lista_id);
+  if (erroreMembri) throw erroreMembri;
+  const altri = membri.filter((m) => m.user_id !== utente.id).map((m) => m.user_id);
+  if (!altri.length) return rispondi({ inviate: 0 });
+
+  const dieciMinutiFa = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const [iscrizioni, lista, profilo, recenti] = await Promise.all([
+    db.from('iscrizioni_notifiche').select('*').in('user_id', altri),
+    db.from('liste').select('nome').eq('id', voce.lista_id).single(),
+    db.from('profili').select('nome').eq('user_id', utente.id).maybeSingle(),
+    // Le voci aggiunte negli ultimi minuti finiscono nella stessa notifica, invece di una per voce
+    db.from('voci').select('testo').eq('lista_id', voce.lista_id).eq('user_id', utente.id)
+      .eq('fatto', false).gte('creata_il', dieciMinutiFa).order('creata_il'),
+  ]);
+  for (const risultato of [iscrizioni, lista, profilo, recenti]) if (risultato.error) throw risultato.error;
+
+  const autore = profilo.data?.nome || membri.find((m) => m.user_id === utente.id)?.email.split('@')[0] || 'Qualcuno';
+  const messaggio = {
+    title: `${lista.data.nome}: ${autore} ha aggiunto`,
+    body: recenti.data.map((v) => v.testo).join(', '),
+    tag: 'aggiunte-' + voce.lista_id,
+    lista: voce.lista_id,
+  };
+  let inviate = 0;
+  for (const iscrizione of iscrizioni.data) if (await invia(iscrizione, messaggio)) inviate++;
   return rispondi({ inviate });
 }
 
@@ -137,7 +186,12 @@ Deno.serve(async (richiesta) => {
     if (!chiavePrivata) throw new Error('Manca il segreto CHIAVE_PRIVATA_NOTIFICHE in Supabase');
     webpush.setVapidDetails(SITO, CHIAVE_PUBBLICA, chiavePrivata);
     const corpo = await richiesta.json().catch(() => ({}));
-    return corpo.prova ? await prova(richiesta) : await promemoriaDelMattino();
+    if (corpo.prova) return await prova(richiesta);
+    if (corpo.nuova_voce) {
+      if (!/^[0-9a-f-]{36}$/.test(String(corpo.nuova_voce))) return rispondi({ errore: 'Voce sconosciuta' }, 400);
+      return await voceAggiunta(richiesta, String(corpo.nuova_voce));
+    }
+    return await promemoriaDelMattino();
   } catch (errore) {
     console.error(errore);
     return rispondi({ errore: errore.message ?? String(errore) }, 500);

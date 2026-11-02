@@ -2,7 +2,7 @@
 // Le pagine del sito: prende sempre la versione più recente dalla rete; la copia salvata si usa solo offline.
 // Le librerie (Supabase e Sortable) hanno la versione nell'indirizzo, quindi non cambiano: si usa la copia salvata.
 // Le richieste al database (Supabase) non passano di qui: i dati offline li salva la pagina.
-const CACHE = 'cose-da-fare-v5';
+const CACHE = 'cose-da-fare-v6';
 // I file del sito, salvati subito per poterlo aprire offline
 const FILE_DEL_SITO = ['./', './stile.css', './app.js'];
 const LIBRERIE = [
@@ -64,19 +64,25 @@ self.addEventListener('push', (evento) => {
     body: dati.body || '',
     icon: new URL('icone/icona-192.png', self.registration.scope).href,
     lang: 'it',
-    // Un nuovo promemoria prende il posto di quello vecchio, invece di accumularsi
-    tag: 'promemoria',
+    // Una nuova notifica con lo stesso tag prende il posto di quella vecchia, invece di accumularsi
+    tag: dati.tag || 'promemoria',
     renotify: true,
+    data: { lista: dati.lista },
   }));
 });
 
-// Toccando la notifica si apre la lista (o si torna a quella già aperta)
+// Toccando la notifica si apre l'app (o si torna a quella già aperta), sulla lista della notifica
 self.addEventListener('notificationclick', (evento) => {
   evento.notification.close();
+  const lista = evento.notification.data?.lista;
   evento.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((finestre) => {
       const aperta = finestre.find((finestra) => finestra.url.startsWith(self.registration.scope));
-      return aperta ? aperta.focus() : self.clients.openWindow(self.registration.scope);
+      if (aperta) {
+        if (lista) aperta.postMessage({ apriLista: lista });
+        return aperta.focus();
+      }
+      return self.clients.openWindow(self.registration.scope + (lista ? '?lista=' + encodeURIComponent(lista) : ''));
     })
   );
 });

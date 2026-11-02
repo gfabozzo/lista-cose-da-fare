@@ -14,7 +14,7 @@ Una lista delle cose da fare da condividere in famiglia: si usa dal browser o co
 - **Quantità** (− ×2 +), anche scrivendo direttamente "Latte x2".
 - **Scadenze**: rosse se in ritardo, arancioni se per oggi o domani, con il filtro "In scadenza".
 - **Promemoria all'apertura**: un riquadro in cima ricorda le cose in ritardo, di oggi e di domani di tutte le liste. Con ✕ si nasconde fino al giorno dopo.
-- **Notifiche sul telefono**: ogni mattina alle 8 una notifica con le cose in ritardo, di oggi e di domani, anche con l'app chiusa.
+- **Notifiche sul telefono**: ogni mattina alle 8 una notifica con le cose in ritardo, di oggi e di domani, anche con l'app chiusa. E quando qualcuno aggiunge una voce a una lista condivisa, gli altri membri ricevono subito una notifica.
 - **Voci ricorrenti**: ogni giorno, settimana, mese o anno. Quando le spunti si spostano alla prossima data.
 - **Riordinare** le voci trascinandole dalla maniglia ⠿.
 - **Suggerimenti** mentre scrivi e **Annulla** dopo un'eliminazione.

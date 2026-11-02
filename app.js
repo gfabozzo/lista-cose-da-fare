@@ -515,6 +515,9 @@ function creatoreListaAttiva() {
   return mieListe.find((l) => l.id === listaAttiva)?.creata_da;
 }
 
+// La lista da aprire quando l'app parte toccando una notifica (indirizzo "...?lista=...")
+const listaDallaNotifica = new URLSearchParams(location.search).get('lista');
+
 async function preparaListe() {
   // Accetta gli inviti per la tua email e crea la tua prima lista se non ne hai
   let { data, error } = navigator.onLine ? await db.rpc('prepara_liste') : { data: null, error: { message: 'offline' } };
@@ -530,7 +533,7 @@ async function preparaListe() {
     return false;
   }
   mieListe = data;
-  let preferita = listaAttiva;
+  let preferita = listaAttiva || listaDallaNotifica;
   try { preferita = preferita || localStorage.getItem('lista-attiva'); } catch {}
   listaAttiva = data.some((l) => l.id === preferita) ? preferita : data[0].id;
 
@@ -943,6 +946,11 @@ form.addEventListener('submit', async (e) => {
   if (!trovaVoce(data.id)) aggiungiVoce(data);
   aggiornaConteggio();
   ricordaPerSuggerimenti(nuovo);
+  // Gli altri membri della lista ricevono una notifica (se l'hanno attivata)
+  if (listaCondivisa) {
+    db.functions.invoke('promemoria', { body: { nuova_voce: data.id } })
+      .then(({ error: errore }) => errore && console.error(errore));
+  }
 });
 
 // Accesso con link via email
@@ -1295,6 +1303,11 @@ window.addEventListener('appinstalled', () => { installa.hidden = true; });
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('service-worker.js').catch((errore) => console.error(errore));
+  // Se l'app era già aperta, toccando una notifica il service worker chiede di passare a quella lista
+  navigator.serviceWorker.addEventListener('message', (evento) => {
+    const id = evento.data?.apriLista;
+    if (id && id !== listaAttiva && mieListe.some((l) => l.id === id)) apriLista(id);
+  });
 }
 
 let temaSalvato = null;

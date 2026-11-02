@@ -125,6 +125,7 @@ function aggiornaConteggio() {
   // Il pulsante compare solo se c'è almeno una voce completata
   svuota.hidden = !lista.querySelector('li.fatto');
   salvaCopiaVoci();
+  mostraPromemoria();
 }
 
 function aggiungiVoce(voce) {
@@ -247,6 +248,86 @@ function oggiIso(spostamentoGiorni = 0) {
   return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
 }
 
+// ---- Promemoria delle scadenze ----
+// In cima alla pagina, un riquadro ricorda le cose da fare in ritardo, di oggi e di domani, in tutte le liste.
+// Per la lista aperta legge le voci sulla pagina, così si aggiorna subito quando ne spunti una o cambi una data.
+const promemoria = document.getElementById('promemoria');
+const testoPromemoria = document.getElementById('testo-promemoria');
+let scadenzeTutteLeListe = [];
+
+async function caricaScadenze() {
+  const { data, error } = navigator.onLine
+    ? await db.from('voci').select('testo, scadenza, lista_id').eq('fatto', false).lte('scadenza', oggiIso(1))
+    : { data: null, error: { message: 'offline' } };
+  // Senza connessione usa le copie salvate delle liste
+  scadenzeTutteLeListe = error
+    ? mieListe.flatMap((l) => leggiCopia('voci-' + l.id, [])
+      .filter((v) => !v.fatto && v.scadenza && v.scadenza <= oggiIso(1))
+      .map((v) => ({ ...v, lista_id: l.id })))
+    : data;
+  mostraPromemoria();
+}
+
+function mostraPromemoria() {
+  // Le voci della lista aperta prendono il posto di quelle lette prima dal database,
+  // così restano giuste anche dopo essere passati a un'altra lista
+  // (lista.dataset.lista dice di quale lista sono le voci sulla pagina, anche mentre se ne sta aprendo un'altra)
+  const listaSullaPagina = lista.dataset.lista;
+  scadenzeTutteLeListe = scadenzeTutteLeListe
+    .filter((v) => v.lista_id !== listaSullaPagina)
+    .concat([...lista.children]
+      .filter((li) => !li.classList.contains('fatto') && li.dataset.scadenza && li.dataset.scadenza <= oggiIso(1))
+      .map((li) => ({
+        testo: li.querySelector('span')?.textContent ?? li.querySelector('.modifica')?.value ?? '',
+        scadenza: li.dataset.scadenza,
+        lista_id: listaSullaPagina,
+      })));
+  const daRicordare = scadenzeTutteLeListe.filter((v) => mieListe.some((l) => l.id === v.lista_id));
+  let chiusoOggi = false;
+  try { chiusoOggi = localStorage.getItem('promemoria-chiuso') === oggiIso(); } catch {}
+  promemoria.hidden = !daRicordare.length || chiusoOggi;
+  if (promemoria.hidden) return;
+
+  const gruppi = [
+    { classe: 'in-ritardo', titolo: '⚠️ In ritardo', vale: (s) => s < oggiIso() },
+    { classe: 'oggi', titolo: '⏰ Oggi', vale: (s) => s === oggiIso() },
+    { classe: 'domani', titolo: '📅 Domani', vale: (s) => s === oggiIso(1) },
+  ];
+  testoPromemoria.replaceChildren(...gruppi.map((gruppo) => {
+    const voci = daRicordare.filter((v) => gruppo.vale(v.scadenza)).sort((a, b) => a.scadenza.localeCompare(b.scadenza));
+    if (!voci.length) return null;
+    const riga = document.createElement('p');
+    riga.className = gruppo.classe;
+    const titolo = document.createElement('strong');
+    titolo.textContent = gruppo.titolo + ': ';
+    riga.append(titolo);
+    voci.forEach((v, i) => {
+      if (i) riga.append(', ');
+      // Le voci di un'altra lista sono un pulsante che apre quella lista
+      const altraLista = v.lista_id !== listaAttiva;
+      const voce = document.createElement(altraLista ? 'button' : 'span');
+      voce.textContent = v.testo;
+      if (altraLista) {
+        const nomeLista = mieListe.find((l) => l.id === v.lista_id)?.nome;
+        voce.title = `Apri la lista "${nomeLista}"`;
+        voce.addEventListener('click', () => apriLista(v.lista_id));
+        const nome = document.createElement('span');
+        nome.className = 'nome-lista';
+        nome.textContent = ` (${nomeLista})`;
+        riga.append(voce, nome);
+      } else {
+        riga.append(voce);
+      }
+    });
+    return riga;
+  }).filter(Boolean));
+}
+
+document.getElementById('chiudi-promemoria').addEventListener('click', () => {
+  try { localStorage.setItem('promemoria-chiuso', oggiIso()); } catch {}
+  promemoria.hidden = true;
+});
+
 // ---- Voci ricorrenti ----
 const NOMI_RIPETI = { giorno: 'ogni giorno', settimana: 'ogni settimana', mese: 'ogni mese', anno: 'ogni anno' };
 
@@ -309,6 +390,8 @@ function mostraScadenza(li, scadenza) {
   const testoData = etichetta.querySelector('small');
   etichetta.querySelector('input').value = scadenza || '';
   li.dataset.scadenza = scadenza || '';
+  // Quando cambi una data, il promemoria in cima si aggiorna subito
+  if (li.isConnected) mostraPromemoria();
   li.classList.remove('in-ritardo', 'vicina', 'urgente');
   etichetta.classList.toggle('vuota', !scadenza);
   li.querySelector('.togli-scadenza').hidden = !scadenza;
@@ -719,6 +802,7 @@ async function caricaVoci() {
   // Le voci appena eliminate (in attesa di "Annulla") non devono ricomparire
   const inEliminazione = new Set(eliminazioneInAttesa?.voci.map((li) => li.dataset.id) ?? []);
   lista.replaceChildren();
+  lista.dataset.lista = listaAttiva;
   data.filter((v) => !inEliminazione.has(v.id)).forEach(aggiungiVoce);
   aggiornaConteggio();
   if (!senzaRete) ascoltaModifiche();
@@ -977,6 +1061,8 @@ db.auth.onAuthStateChange((evento, sessione) => {
   accesso.hidden = !!utente;
   app.hidden = !utente;
   lista.replaceChildren();
+  delete lista.dataset.lista;
+  scadenzeTutteLeListe = [];
   // Anche questa chiamata a Supabase va fatta fuori da questa funzione, altrimenti può bloccare l'accesso
   setTimeout(smettiDiAscoltare, 0);
   if (!utente) {
@@ -995,6 +1081,7 @@ db.auth.onAuthStateChange((evento, sessione) => {
       await trasferisciVecchieVoci();
       await caricaVoci();
       await caricaPersone();
+      await caricaScadenze();
     } finally {
       clearTimeout(controllo);
     }
@@ -1025,6 +1112,7 @@ async function aggiornaTutto() {
   if (!(await preparaListe())) return;
   await caricaVoci();
   await caricaPersone();
+  await caricaScadenze();
 }
 
 // Quando torni sulla pagina, ricarica tutto: così vedi le modifiche fatte dagli altri

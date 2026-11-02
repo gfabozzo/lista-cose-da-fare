@@ -13,6 +13,7 @@ Una lista delle cose da fare da condividere in famiglia: si usa dal browser o co
 - **Chi ha aggiunto cosa**: accanto a ogni voce, il nome di chi l'ha scritta, con il suo colore.
 - **Quantità** (− ×2 +), anche scrivendo direttamente "Latte x2".
 - **Scadenze**: rosse se in ritardo, arancioni se per oggi o domani, con il filtro "In scadenza".
+- **Promemoria all'apertura**: un riquadro in cima ricorda le cose in ritardo, di oggi e di domani di tutte le liste. Con ✕ si nasconde fino al giorno dopo.
 - **Voci ricorrenti**: ogni giorno, settimana, mese o anno. Quando le spunti si spostano alla prossima data.
 - **Riordinare** le voci trascinandole dalla maniglia ⠿.
 - **Suggerimenti** mentre scrivi e **Annulla** dopo un'eliminazione.

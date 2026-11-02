@@ -104,6 +104,17 @@ body.offline .togli-scadenza, body.offline .scadenza, body.offline .maniglia, bo
 body.offline #condividi, body.offline #mio-nome {
   opacity: 0.35; pointer-events: none; }
 body.offline .corpo > span { pointer-events: none; }
+/* Promemoria in cima: cose in ritardo, di oggi e di domani in tutte le liste */
+#promemoria { display: flex; align-items: flex-start; gap: 10px; margin: 0 0 14px; padding: 10px 8px 10px 14px; border-radius: 10px;
+  background: hsl(45 95% var(--chi-sfondo)); color: hsl(35 80% var(--chi-testo)); font-size: 0.9rem; line-height: 1.5; }
+#testo-promemoria { flex: 1; min-width: 0; }
+#testo-promemoria p { margin: 0; }
+#testo-promemoria p + p { margin-top: 4px; }
+#testo-promemoria .in-ritardo strong { color: var(--pericolo); }
+#testo-promemoria button { padding: 0; border: none; background: none; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
+#testo-promemoria .nome-lista { opacity: 0.75; }
+#chiudi-promemoria { flex: none; padding: 2px 8px; border: none; border-radius: 6px; background: none; color: inherit; opacity: 0.6; }
+#chiudi-promemoria:hover { opacity: 1; }
 #messaggio.errore { background: var(--pericolo-sfondo); color: var(--pericolo); }
 #barra-liste { display: flex; gap: 6px; margin-bottom: 12px; }
 #barra-liste button { width: 42px; flex: none; border: 1px solid var(--bordo); border-radius: 10px; background: var(--sfondo); font-size: 1rem; }
@@ -170,7 +181,7 @@ li.fatto .chi { opacity: 0.5; }
   :root { --sfondo: #fff; --scheda: #fff; --testo: #000; --tenue: #555; --bordo: #ccc; --ombra: none; }
   body { padding: 0; background: #fff; }
   main { box-shadow: none; padding: 0; max-width: none; }
-  header, #accesso, #messaggio, #barra-liste, #form, #filtri, #fondo, #esporta, #condividi, #account,
+  header, #accesso, #messaggio, #promemoria, #barra-liste, #form, #filtri, #fondo, #esporta, #condividi, #account,
   .maniglia, .quantita button, .elimina, .togli-scadenza, .scadenza.vuota { display: none !important; }
   #titolo-stampa { display: block !important; margin: 0 0 12px; }
   #lista li { display: flex !important; break-inside: avoid; }

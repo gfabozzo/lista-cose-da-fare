@@ -1136,7 +1136,7 @@ document.addEventListener('visibilitychange', () => {
 // ---- Notifiche sul telefono ----
 // Ogni mattina la funzione "promemoria" di Supabase manda una notifica ai dispositivi registrati qui
 // (vedi supabase/notifiche.sql e supabase/functions/promemoria/index.ts).
-const CHIAVE_PUBBLICA_NOTIFICHE = 'METTI_QUI_LA_CHIAVE_PUBBLICA';
+const CHIAVE_PUBBLICA_NOTIFICHE = 'BCwbhMQqxMakW3Ejxu4-_Sc-hn8maqlxTEk1ppgRRoVcpdr2RY4kyiXcokNEmfAbbXEMJQdW14aN8OopviQFNCM';
 const statoNotifiche = document.getElementById('stato-notifiche');
 const attivaNotifiche = document.getElementById('attiva-notifiche');
 const provaNotifica = document.getElementById('prova-notifica');

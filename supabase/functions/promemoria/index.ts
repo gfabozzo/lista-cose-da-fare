@@ -8,7 +8,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2.118.0';
 import webpush from 'npm:web-push@3.6.7';
 
 // La chiave pubblica si può mostrare a tutti; quella privata è un segreto salvato in Supabase
-const CHIAVE_PUBBLICA = 'METTI_QUI_LA_CHIAVE_PUBBLICA';
+const CHIAVE_PUBBLICA = 'BCwbhMQqxMakW3Ejxu4-_Sc-hn8maqlxTEk1ppgRRoVcpdr2RY4kyiXcokNEmfAbbXEMJQdW14aN8OopviQFNCM';
 const SITO = 'https://gfabozzo.github.io/lista-cose-da-fare/';
 const ORA_DEL_PROMEMORIA = 8;
 
